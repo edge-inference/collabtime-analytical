@@ -1,0 +1,39 @@
+% DSM architecture run-in diagram (TikZ)
+% Compiles inside standalone figure environment
+\begin{tikzpicture}[
+  >=Stealth,
+  node distance=12mm and 12mm,
+  every node/.style={font=\small},
+  line width=0.8pt,
+  agent/.style={draw=black, rounded corners=2pt, fill=gray!20, inner sep=6pt, minimum width=22mm, minimum height=8mm},
+  mem/.style={draw=black, rounded corners=3pt, fill=gray!25, inner sep=8pt, minimum width=85mm, minimum height=10mm},
+  thinarrow/.style={-{Stealth[length=2.5mm,width=2.5mm]}}
+]
+  % Distributed Shared Memory bar
+  \node[mem, align=center] (dsm) {Distributed Shared Memory};
+
+  % Agents row
+  \node[agent, below left=18mm and 18mm of dsm.south] (a1) {Agent 1};
+  \node[agent, below=18mm of dsm.south] (amid) {\dots};
+  \node[agent, below right=18mm and 18mm of dsm.south] (aN) {Agent N};
+
+  % Arrows up to DSM
+  % Straight vertical lines from agents up to DSM (aligned x-coordinate)
+  \draw[thinarrow] (a1.north) -- (a1.north |- dsm.south);
+  \draw[thinarrow] (amid.north) -- (amid.north |- dsm.south);
+  \draw[thinarrow] (aN.north) -- (aN.north |- dsm.south);
+
+  % Local neighborhood box around Agent 1 and mid (label placed outside)
+  \node[draw=green!50!black, rounded corners=2pt, fit=(a1)(amid), inner sep=6pt] (neigh) {};
+  \node[font=\footnotesize,left=4mm of neigh] (neighlab) {Local neighborhood};
+
+  % Device-aware engine node below the neighborhood and a straight arrow to it
+  \node[font=\footnotesize, draw=none, below=8mm of neigh] (engine) {Device-aware inference engine};
+  \draw[thinarrow] (neigh.south) -- (engine.north);
+
+  % Bidirectional arrow between agents
+  \draw[-{Stealth[length=2.5mm,width=2.5mm]}, {Stealth[length=2.5mm,width=2.5mm]}-] (a1) -- (amid);
+
+  % Ensure a visible bounding box (no stroke in final, but affects layout); uncomment for debugging
+  %\path[use as bounding box] ($(dsm.north west)+(-6mm,6mm)$) rectangle ($(aN.south east)+(6mm,-6mm)$);
+\end{tikzpicture}

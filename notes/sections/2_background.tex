@@ -1,0 +1,16 @@
+\section{Background}
+
+
+\textbf{A. Coordination Systems} \\
+Recent advances in multi-agent systems have demonstrated the potential application in fleets of mobile robots to automate warehouse operations, including item picking, sorting, and transportation \cite{agaskar2025deepfleet}. Effective coordination among robots is crucial to ensure efficient task allocation, collision avoidance, and overall system performance.
+
+We build on queueing theory for edge and node delays, specifically using Kingman's approximation for G/G/1 queues, age-of-information (AoI) bounds for gossip-based distributed shared memory, and standard centralized batch allocation models.
+
+\textbf{B. Stigmergy and Distributed Coordination} \\
+Stigmergy, a mechanism of indirect coordination through the environment, has been widely studied in swarm robotics \cite{garnier2007biological, brambilla2013swarm}. In warehouse settings, stigmergic approaches can enable robots to share information about task status and environmental changes without centralized control \cite{payton2001pheromone, labella2004division}. This can lead to more robust and scalable systems, as robots can adapt to dynamic conditions and locally optimize their behavior. A successful implementation requires a well-designed shared memory and communication architecture.
+
+\textbf{C. Inference Systems for Embodied Robotic Agents} \\
+Besides coordination, mobile robots often rely on onboard AI models for perception, navigation, and decision-making. Recent work has explored the deployment of deep learning models on resource-constrained devices, enabling real-time inference for tasks such as object detection, semantic segmentation, and path planning \cite{redmon2018yolov3, he2017mask}. Vision language Action Models (VLMs) have shown promise in enabling robots to understand and execute complex instructions by grounding language in visual perception \cite{shah2023vlm, singh2022flamingo}. However, deploying these models on mobile robots presents challenges related to computational efficiency, latency, and energy consumption.
+Device-aware edge inference SDKs, such as Nexa, provide efficient and portable execution of AI models on heterogeneous hardware. However, these SDKs do not address multi-agent task dissemination, claiming, or AoI-bounded coordination. Our contribution is a network-centric orchestration approach: a trace and signal dissemination layer combined with a local claiming policy that reduces task propagation time and increases the stability region compared to centralized and hybrid baselines, independent of the specific per-device model runtime.
+
+We validate this approach across multiple runners (TensorRT, ORT, Nexa) to demonstrate that the results are determined by the coordination architecture rather than the SDK implementation.

@@ -1,0 +1,159 @@
+\section{Analytical Model}
+
+\noindent\textbf{Physical plane.} The warehouse is modeled as a directed graph $G=(V,E)$. Each edge $e\in E$ has length $L_e$ and \emph{free-flow traverse time} $t_{\text{traverse},e}=L_e/v$ at speed $v$.
+Edges and intersections have \emph{throughput capacity} $\mu_e$ (robots/s) and incur \emph{latency due to traffic}
+$L^{\text{wait}}_e$ when demand approaches capacity (utilization $\rho_e=\lambda_e/\mu_e$).
+A robot’s travel time sums per-edge wait and traverse times. The same applies to work nodes (pickups, dropoffs) with service rate $\mu_n$ and wait $L^{\text{wait}}_n$.\\
+\noindent\textbf{Compute plane.} The compute plane manages coordination and memory for task assignment. We consider two approaches: centralized memory-server, and distributed shared memory (DSM) with regional tile owners. In DSM, agents maintain shared state over warehouse tiles, ensuring data freshness via age-of-information (AoI) constraints.
+
+
+\noindent\textbf{Notation.}
+$N$: number of robots;
+$\lambda$: order arrival rate (orders/s);
+$S$: per-order service time excluding propagation/claim;
+$T_{\text{prop}}$: order propagation delay;
+$T_{\text{claim}}$: claim/commit delay;
+$T_{\text{travel}}$, $T_{\text{node}}$: travel and node work times;
+$t_{\text{traverse},e}$, $L_{e}^{\text{wait}}$: traverse and wait time for edge $e$;
+$t_{\text{work},n}$, $L_{n}^{\text{wait}}$: work and wait time at node $n$;
+$c_{\text{arr},e}$, $c_{\text{trav},e}$: coefficient of variation;
+$\text{AoI}$: age-of-information;
+$\tau$: AoI budget;
+$\rho_e$, $\rho_n$: utilization.
+
+\subsection*{Baseline service  time}
+Orders arrive as a Poisson process with rate $\lambda$.
+For an order assigned to robot $r$, the baseline service time is
+\begin{equation}
+  S \;=\; T_{\text{travel}} + T_{\text{node}}.
+\end{equation}
+
+\subsection*{Propagation models}
+\noindent\textbf{Centralized control system:} Propagation time is modeled with accounting for batching, solver and broadcast time. Let $\Delta_B$ be the server batch period, $T_{\text{solve}}(N)$ the allocator runtime, and $D_{\text{tree}}$ the height of the broadcast tree with per-hop delay $\delta_{\text{hop}}$:
+\begin{equation}
+  T_{\text{prop}}^{\text{cent}}
+  \;\approx\;
+  \Delta_B \;+\; T_{\text{solve}}(N) \;+\; D_{\text{tree}}\,\delta_{\text{hop}}.
+  \label{eq:cent-prop}
+\end{equation}
+
+\noindent\textbf{Distributed Control System:} we model gossip among memory agents and local tiles. Let $H_{\text{own}}$ be owner-owner hop distance from the order's seed to the nearest eligible region, and $f$ the gossip fanout (rumor spreading among owners/agents):
+\begin{equation}
+  T_{\text{prop}}^{\text{dsm}}
+  \;\approx\;
+  \big(H_{\text{own}} \;+\; \log_f N\big)\,\delta_{\text{hop}}.
+  \label{eq:dsm-prop}
+\end{equation}
+(When owner placement follows graph-Voronoi, $H_{\text{own}}$ scales with graph diameter rather than $N$.)
+
+\subsection*{Claim delay}
+To account for local contention, we use continuous random backoff, each of the $k$ contenders draws $B_i \sim \text{Uniform}(0,W)$; the earliest one wins:
+\begin{equation}
+  \E[T_{\text{claim}}] = \E\left[\min_i B_i\right] + \text{RTT} = \frac{W}{k+1} + \text{RTT}.
+\end{equation}
+(Under centralized assignment $T_{\text{claim}}$ is typically negligible vs.\ $T_{\text{solve}}$.)
+
+\subsection*{Queueing Models}
+We use Kingman's G/G/1 queueing to model edge and node wait times as follows.
+For a path $\mathcal{P}$ through edges and nodes:
+\begin{align}
+  T_{\text{travel}} & = \sum_{e \in \mathcal{P}} \left( t_{\text{traverse},e} + L_{e}^{\text{wait}} \right),              \\
+  T_{\text{node}}   & = \sum_{n \in \{\text{pickup, drop, ...}\}} \left( t_{\text{work},n} + L_{n}^{\text{wait}} \right).
+\end{align}
+
+\noindent\textbf{Edge wait time:}
+\begin{align}
+  L_{e}^{\text{wait}} & \approx \frac{\rho_e}{1-\rho_e} \cdot \frac{c_{\text{arr},e}^2 + c_{\text{trav},e}^2}{2} \cdot \frac{1}{\mu_e}, \notag \\
+                      & \text{where } \mu_e \approx \frac{1}{t_{\text{traverse},e}}, \; \rho_e = \frac{\lambda_e}{\mu_e} \in (0,1).
+\end{align}
+
+\noindent\textbf{Node wait time:}
+\begin{align}
+  L_{n}^{\text{wait}} & \approx \frac{\rho_n}{1-\rho_n} \cdot \frac{c_{\text{arr},n}^2 + c_{\text{work},n}^2}{2} \cdot \frac{1}{\mu_n}, \notag                \\
+                      & \text{where } \mu_n \approx \frac{1}{t_{\text{work},n}} \text{ (or } \frac{c}{t_{\text{work},n}} \text{ for } c \text{ bays)}, \notag \\
+                      & \rho_n = \frac{\lambda_n}{\mu_n} \in (0,1).
+\end{align}
+
+\subsection*{Age of Information (AoI) constraint}
+Decisions consume tiles only if $\text{AoI}\le \tau$.
+For periodic owner gossip with period $T_g$, the mean AoI is $\bar{A}\!\approx\!T_g/2$; choose $T_g\!\le\!2\tau$ (enforced token buckets) so AoI violations remain small.
+
+\subsection*{Total response time and tails}
+Per order:
+\begin{equation}
+  T_{\text{total}} = T_{\text{prop}} + T_{\text{claim}} + T_{\text{travel}} + T_{\text{node}}.
+\end{equation}
+We evaluate performance with $T_{50}$ and $T_{90}$ from empirical and fitted distributions with a lognormal fit to $T_{\text{total}}$.
+
+\subsection*{Stability}
+
+Let $\lambda$ be the total order arrival rate (orders/s), $N$ the number of robots, and $\mu_{\text{eff}}$ the effective per-robot service rate (orders/s):
+\begin{equation}
+  \mu_{\text{eff}} = \frac{1}{\E[T_{\text{travel}} + T_{\text{node}}]},
+\end{equation}
+where $T_{\text{travel}}$ sums edge wait + traverse, and $T_{\text{node}}$ sums node wait + work.
+
+\begin{equation}
+  \lambda < N \cdot \mu_{\text{eff}}.
+\end{equation}
+Thus: arrivals must be less than fleet capacity.
+
+Every busy edge/node must satisfy:
+\begin{equation}
+  \rho_e = \frac{\lambda_e}{\mu_e} < 1, \quad \rho_n = \frac{\lambda_n}{\mu_n} < 1,
+\end{equation}
+where $\mu_e \approx 1/t_{\text{traverse},e}$ (or $c/t_{\text{traverse},e}$ for $c$ lanes) and $\mu_n \approx 1/t_{\text{work},n}$ (or $c/t_{\text{work},n}$ for $c$ bays). If any $\rho \to 1$, waits blow up and $\mu_{\text{eff}}$ drops.
+
+Architectures with smaller $T_{\text{prop}}$ and fewer AoI violations typically start service sooner and increase $\mu_{\text{eff}}$.
+
+\subsection*{Comparative predictions}
+\begin{itemize}
+  \item For small $N$, \eqref{eq:cent-prop} may be competitive; as $N$ grows, $T_{\text{solve}}(N)$ and $D_{\text{tree}}$ dominate, while \eqref{eq:dsm-prop} grows with $\log_f N$ and graph diameter $\Rightarrow$ DSM reduces $T_{\text{prop}}$.
+  \item Lower $T_{\text{prop}}$ reduces queue arrival bursts, lowering $\rho_e$ on critical edges and hence $L_{e}^{\text{wait}}$, improving $T_{90}$.
+\end{itemize}
+
+\begin{table}[ht]
+  \caption{System parameters for model evaluation.}
+  \label{sample-params}
+  \vskip 0.15in
+  \begin{center}
+    \begin{small}
+      \begin{tabular}{lll}
+        \toprule
+        Parameter             & Value                 & Units \\
+        \midrule
+        $\delta_{\text{hop}}$ & [5, 20]               & ms    \\
+        $\Delta_B$            & [100, 300]            & ms    \\
+        $f$                   & \{1, 2, 4\}           & hops  \\
+        $v$                   & 1.0                   & m/s   \\
+        $\mu_e$               & $1/t^{\text{pass}}_e$ & 1/ms  \\
+        $\tau_{\text{tile}}$  & 300                   & ms    \\
+        \bottomrule
+      \end{tabular}
+    \end{small}
+  \end{center}
+  \vskip -0.1in
+\end{table}
+
+\subsection*{Analytical Results}
+We summarize three key results from the analytical study.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}[b]{0.48\columnwidth}
+    \centering
+    \includegraphics[width=\textwidth]{../results/analytical/propagation_vs_fleet_size.pdf}
+    \caption{Propagation time vs fleet size}
+    \label{fig:propagation-vs-fleet}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\columnwidth}
+    \centering
+    \includegraphics[width=\textwidth]{../results/analytical/stability_boundaries.pdf}
+    \caption{Stability feasible regions}
+    \label{fig:stability-boundaries}
+  \end{subfigure}
+  \caption{Analytical comparison of Distributed vs Centralized Control}
+  \label{fig:analytical-results}
+\end{figure}
+

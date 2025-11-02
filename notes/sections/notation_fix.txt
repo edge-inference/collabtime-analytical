@@ -1,0 +1,17 @@
+\end{enumerate}
+
+\paragraph{Notation.}
+$N$: number of robots;
+$\lambda$: order arrival rate (orders/s);
+$S$: per-order service time excluding propagation/claim;
+$T_{\text{prop}}$: order propagation delay;
+$T_{\text{claim}}$: claim/commit delay;
+$T_{\text{travel}}$, $T_{\text{node}}$: travel and node work times;
+$t_{\text{traverse},e}$, $L_{e}^{\text{wait}}$: traverse and wait time for edge $e$;
+$t_{\text{work},n}$, $L_{n}^{\text{wait}}$: work and wait time at node $n$;
+$c_{\text{arr},e}$, $c_{\text{trav},e}$: coefficient of variation;
+$\text{AoI}$: age-of-information;
+$\tau$: AoI budget;
+$\rho_e$, $\rho_n$: utilization.
+
+\subsection*{Order arrivals and baseline service}

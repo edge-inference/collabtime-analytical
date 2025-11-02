@@ -1,0 +1,47 @@
+% Main entry for paper - MLSys 2025 style
+\documentclass{article}
+\usepackage[accepted]{mlsys2025}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.misc,fit,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{float}
+
+% Custom commands
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathbb{V}}
+\newcommand{\1}{\mathbf{1}}
+
+\begin{document}
+\pagestyle{empty}
+
+\twocolumn[
+  \mlsystitle{A Context-Aware Shared-Memory Fabric for Collaborative Mobile Robots}
+
+  \vskip 0.3in
+  \begin{abstract}
+    \input{sections/0_abstract}
+  \end{abstract}
+]
+
+% Section files (numbered)
+\input{sections/1_introduction}
+\input{sections/2_background}
+\input{sections/3_methodology}
+\input{sections/4_model}
+\input{sections/5_simulation}
+
+% Force all bibliography entries to appear (remove this and use \cite{} in text instead)
+\nocite{*}
+
+\bibliography{refs}
+\bibliographystyle{mlsys2025}
+
+\end{document}

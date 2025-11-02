@@ -1,0 +1,20 @@
+build/
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+sections/*.aux
+sections/*.bbl
+sections/*.blg
+sections/*.fdb_latexmk
+sections/*.fls
+sections/*.log
+sections/*.pdf
+sections/*.synctex.gz
+
+# Keep main.pdf in root for easy access
+!main.pdf

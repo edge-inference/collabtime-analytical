@@ -1,0 +1,137 @@
+# Analytical Model Configuration
+# Parameters for DSM vs Centralized performance analysis
+
+# System Parameters
+system:
+  # Fleet sizes to analyze
+  fleet_sizes: [4, 8, 12, 16, 20, 24, 32, 48, 64, 80, 100]
+  
+  # Task arrival rates (tasks/ms)
+  arrival_rates: [0.0001, 0.0002, 0.0004, 0.0006, 0.0008, 0.001, 0.0012, 0.0015, 0.002]
+  
+  # Warehouse topology
+  warehouse:
+    width: 20
+    height: 15
+    aisle_width: 2.0  # meters (lateral width)
+    cell_length: 1.0  
+    intersection_size: 2.0  # meters
+    storage_density: 0.3 
+  # Capacities
+  edge_capacity: 2  
+  node_capacity: 1 
+    
+  # Robot characteristics
+  robot:
+    speed: 0.001  # m/ms
+    work_time: 5000.0  # ms/task
+
+# Network and Communication
+network:
+  # Per-hop delays
+  hop_delay: 10.0  # milliseconds
+  serialization_delay: 2.0  # milliseconds per packet
+  
+  # Central system
+  central:
+    batch_period: 200.0  # milliseconds
+    tree_depth: 4  # broadcast tree depth
+    solver_complexity:  # T_solve(N) = a*N^2 + b*N + c
+      a: 0.001  # quadratic coefficient (ms)
+      b: 2.0    # linear coefficient (ms)
+      c: 10.0   # constant term (ms)
+  
+  # DSM system
+  dsm:
+    gossip_fanout: 2  # number of neighbors per gossip round
+    tile_hops: 2  # average hops between tile owners
+    gossip_period: 150.0  # milliseconds
+    backoff_base: 50.0  # milliseconds base backoff
+    conflict_probability: 0.1  # base conflict probability
+
+# Age of Information
+aoi:
+  target_freshness: 300.0  # milliseconds
+  update_period: 100.0  # milliseconds for periodic updates
+  poisson_rate: 0.005  # updates per millisecond for Poisson model
+
+# Queue Theory Parameters
+queueing:
+  # Variance parameters for G/G/1
+  # Stability threshold
+  max_utilization: 0.85  # ρ threshold for stability
+  
+  # Variance parameters for G/G/1
+  arrival_cv_squared: 1.0  # coefficient of variation squared for arrivals
+  service_cv_squared: 0.5  # coefficient of variation squared for service
+
+# Analysis Settings
+analysis:
+  # What to compute
+  metrics:
+    - "propagation_time"
+    - "total_latency"
+    - "stability_boundary"
+    - "aoi_violations"
+    - "queue_delays"
+  
+  # Percentiles to compute
+  percentiles: [50, 90, 95, 99]
+  
+  # Parameter sweeps
+  sweeps:
+    fleet_size:
+      min: 4
+      max: 128
+      step: 4
+    arrival_rate:
+      min: 0.0001
+      max: 0.0020
+      step: 0.0001
+    gossip_fanout: [1, 2, 4, 8]
+    batch_period: [100, 200, 300, 500]
+
+# Plotting Configuration
+plots:
+  # Figure settings
+  figsize: [5, 6]
+  dpi: 600
+  style: "seaborn-v0_8"
+  font_size: 20
+  
+  # What plots to generate
+  generate:
+    - "propagation_vs_fleet_size"
+    - "total_latency_heatmap"
+    - "stability_boundaries"
+    - "aoi_violation_probability"
+    - "sensitivity_gossip_fanout"
+  
+  # Colors and styling
+  colors:
+    centralized: "#1f77b4"
+    dsm: "#ff7f0e"
+    unstable: "#d62728"
+  
+  # Output
+  output_dir: "results/analytical"
+  formats: ["png", "pdf"]
+
+# Sensitivity Analysis
+sensitivity:
+  # Parameters to vary
+  parameters:
+    hop_delay: [5, 10, 20, 50]
+    solver_complexity_a: [0.0005, 0.001, 0.002, 0.005]
+    gossip_fanout: [1, 2, 4, 8]
+    conflict_probability: [0.05, 0.1, 0.2, 0.3]
+  
+  # Analysis method
+  method: "one_at_a_time"  # or "sobol" for global sensitivity
+  
+  # Output metrics
+  output_metrics:
+    - "crossover_fleet_size"
+    - "max_stable_rate_dsm"
+    - "max_stable_rate_central"
+    - "latency_improvement_factor"
