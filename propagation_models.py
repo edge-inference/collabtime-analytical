@@ -16,12 +16,18 @@ class NetworkParams:
     serialization_delay: float  # milliseconds
     batch_period: float  # milliseconds (central)
     tree_depth: int  # broadcast tree depth
+    solver_a: float  # T_solve(N) quadratic coefficient
+    solver_b: float  # T_solve(N) linear coefficient
+    solver_c: float  # T_solve(N) constant term
     gossip_fanout: int  # DSM fanout
     gossip_period: float  # milliseconds
     tile_hops: float  # average hops between tiles
     claim_rtt: float  # milliseconds - RTT for task claim confirmation
     handshake_rtt: float  # milliseconds - RTT for propagation handshake
     conflict_probability: float  # probability a claim attempt conflicts (0..1)
+    scheduler_replicas: int = 1  # centralized scheduler service replicas
+    scheduler_service_base_ms: float = 0.0  # base per-request scheduler service time
+    scheduler_service_per_robot_ms: float = 0.0  # additional per-robot service cost
 
 
 class PropagationModel:
@@ -30,9 +36,13 @@ class PropagationModel:
     def __init__(self, network_params: NetworkParams):
         self.params = network_params
 
-    def _solver_time(self, fleet_size: int, a: float = 0.001, b: float = 2.0, c: float = 10.0) -> float:
+    def _solver_time(self, fleet_size: int) -> float:
         """Solver time complexity T_solve(N) = a*N^2 + b*N + c."""
-        return a * fleet_size**2 + b * fleet_size + c
+        return (
+            self.params.solver_a * fleet_size**2
+            + self.params.solver_b * fleet_size
+            + self.params.solver_c
+        )
     
     def claim_time_dsm(self, num_contenders: int = 2, window_size: float = 100.0) -> float:
         """Expected claim time with continuous random backoff and conflict retries.
@@ -56,6 +66,21 @@ class PropagationModel:
     def claim_time_central(self) -> float:
         """Claim time for centralized (negligible vs solver time)."""
         return 0.0
+
+    def central_scheduler_service_time(self, fleet_size: int) -> float:
+        """Per-request service time of the centralized scheduler in milliseconds."""
+        return (
+            self.params.scheduler_service_base_ms
+            + self.params.scheduler_service_per_robot_ms * fleet_size
+        )
+
+    def central_scheduler_capacity(self, fleet_size: int) -> float:
+        """Maximum centralized scheduler throughput in tasks/ms."""
+        service_time = self.central_scheduler_service_time(fleet_size)
+        if service_time <= 0:
+            return float("inf")
+        replicas = max(self.params.scheduler_replicas, 1)
+        return replicas / service_time
 
     def central_propagation_time(self, fleet_size: int) -> Dict[str, float]:
         """Propagation time breakdown for centralized system.

@@ -110,18 +110,22 @@ class AnalyticalVisualizer:
                    color=colors.get('dsm', 'orange'),
                    label='DSM', linewidth=2, markersize=6)
             
-            # Mark crossover point
+            # Mark propagation crossover point
             if show_crossover and comparison_result.crossover_point:
                 crossover = comparison_result.crossover_point
                 if crossover in fleet_sizes:
                     idx = fleet_sizes.index(crossover)
                     ax.axvline(x=crossover, color='red', linestyle='--', alpha=0.7,
-                              label=f'Crossover: {crossover}')
+                              label=f'Xover: {crossover}')
                     ax.plot(crossover, dsm_prop[idx], 'ro', markersize=10, alpha=0.7)
             
             ax.set_xlabel('Fleet Size (N)')
-            ax.set_ylabel('Propagation Time (ms)')
-            leg = ax.legend(loc='center right')
+            ax.set_ylabel('State Propagation Time (ms)')
+            leg = ax.legend(
+                loc='upper left',
+                bbox_to_anchor=(0.28, 0.98),
+                frameon=False,
+            )
             if leg:
                 try:
                     leg.set_title(None)
@@ -277,17 +281,27 @@ class AnalyticalVisualizer:
             
             # Mark target violation rate
             target_rate = 0.05  # 5%
-            ax.axhline(y=target_rate, color='green', linestyle='--', 
-                      label=f'Target violation rate: {target_rate*100}%')
+            ax.axhline(y=target_rate, color='green', linestyle='--',
+                      label=f'Target violation: {target_rate*100:.0f}%')
             
-            # Mark freshness target
+            # Mark the largest period with zero deterministic AoI violations
             target_fresh = aoi_analysis['target_freshness']
-            ax.axvline(x=target_fresh/2, color='blue', linestyle='--', alpha=0.7,
-                      label=f'Optimal period: {target_fresh/2}ms')
+            transmission_delay = (
+                comparison.network_params.hop_delay
+                * comparison.network_params.tile_hops
+            )
+            zero_violation_period = max(target_fresh - transmission_delay, 0.0)
+            ax.axvline(x=zero_violation_period, color='blue', linestyle='--', alpha=0.7,
+                      label=f'Zero-violation bound: {zero_violation_period:.0f} ms')
             
             ax.set_xlabel('Gossip Period (ms)')
-            ax.set_ylabel('AoI Violation Probability')
-            leg = ax.legend()
+            ax.set_ylabel('Distributed AoI Violation Probability')
+            leg = ax.legend(
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.18),
+                frameon=False,
+                ncol=1,
+            )
             if leg:
                 try:
                     leg.set_title(None)
@@ -295,7 +309,7 @@ class AnalyticalVisualizer:
                 except Exception:
                     pass
             ax.grid(True, alpha=0.3)
-            ax.set_yscale('log')
+            ax.set_ylim(bottom=0.0)
             self._style_axes(ax)
             
             filename = self.output_dir / 'aoi_violations'
@@ -365,10 +379,13 @@ class AnalyticalVisualizer:
             print(f"Error creating sensitivity plot: {e}")
             return ""
 
-    def plot_sensitivity_gossip_fanout(self, comparison: DSMCentralizedComparison) -> str:
+    def plot_sensitivity_gossip_fanout(self, comparison: DSMCentralizedComparison,
+                                       base_fleet_size: int = None) -> str:
         """Plot propagation vs gossip fanout (single panel)."""
         try:
-            sensitivity = comparison.sensitivity_analysis()
+            if base_fleet_size is None:
+                base_fleet_size = max(comparison.config['system']['fleet_sizes'])
+            sensitivity = comparison.sensitivity_analysis(base_fleet_size=base_fleet_size)
             data = sensitivity.get('gossip_fanout')
             if not data:
                 return ""
@@ -394,6 +411,14 @@ class AnalyticalVisualizer:
                 except Exception:
                     pass
             ax.grid(True, alpha=0.3)
+            ax.text(
+                0.03,
+                0.94,
+                f'N = {base_fleet_size}',
+                transform=ax.transAxes,
+                fontsize=max(getattr(self, '_base_fs', 12) - 2, 8),
+                va='top',
+            )
             self._style_axes(ax)
 
             filename = self.output_dir / 'sensitivity_gossip_fanout'
@@ -508,10 +533,10 @@ class AnalyticalVisualizer:
         if 'stability_boundaries' in plots_to_generate:
             plot_files.append(self.plot_stability_boundaries(result))
         
-        if 'latency_heatmap' in plots_to_generate:
+        if 'latency_heatmap' in plots_to_generate or 'total_latency_heatmap' in plots_to_generate:
             plot_files.append(self.plot_latency_heatmap(comparison))
         
-        if 'aoi_violations' in plots_to_generate:
+        if 'aoi_violations' in plots_to_generate or 'aoi_violation_probability' in plots_to_generate:
             plot_files.append(self.plot_aoi_violations(comparison))
         
         # Crossover analysis removed from default set; enable via config if needed

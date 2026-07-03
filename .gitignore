@@ -20,6 +20,7 @@ results/
 __MACOSX/
 .DS_Store
 Thumbs.db
+/.codex
 notes/build/
 notes/_mlsys_template/mlsys2025style/.*
 notes/_mlsys_template/mlsys2025style/example_paper.*

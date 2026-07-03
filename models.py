@@ -25,6 +25,7 @@ class SystemParams:
     node_capacity: int
     t_work: float  # work time at nodes (ms)
     t_traverse: float  # edge traversal time (ms)
+    expected_path_cells: float = None  # optional path length override
 
 
 @dataclass
@@ -62,6 +63,8 @@ class ArrivalModel:
     def expected_path_length(self) -> float:
         """Expected shortest path length in cells (dimensionless).
         Approximate as Manhattan distance fraction of grid size."""
+        if self.params.expected_path_cells is not None:
+            return self.params.expected_path_cells
         avg_cells = (self.params.warehouse_width + self.params.warehouse_height) / 3
         return avg_cells
     
@@ -78,17 +81,19 @@ class QueueingModel:
         self.params = queue_params
         self.system_params = system_params
     
-    def edge_time(self, traffic_rate: float, lanes: int = 1) -> float:
+    def edge_time(self, traffic_rate: float, lanes: int = 1,
+                  traverse_time: float = None) -> float:
         """Total edge time = t_traverse + wait_time (ms)."""
+        service_time = traverse_time if traverse_time is not None else self.system_params.t_traverse
         edge_queue = QueueModel(
             arrival_rate=traffic_rate,  # tasks/ms
-            service_time=self.system_params.t_traverse,  # ms
+            service_time=service_time,  # ms
             servers=lanes,
             Ca2=self.params.arrival_cv_squared,
             Cs2=self.params.service_cv_squared
         )
         wait_time_ms = edge_queue.waiting_time()  # ms
-        return self.system_params.t_traverse + wait_time_ms
+        return service_time + wait_time_ms
     
     def node_time(self, traffic_rate: float, bays: int = 1) -> float:
         """Total node time = t_work + wait_time (in milliseconds)."""
@@ -102,9 +107,11 @@ class QueueingModel:
         wait_time_ms = node_queue.waiting_time()  # ms
         return self.system_params.t_work + wait_time_ms
     
-    def edge_utilization(self, traffic_rate: float, lanes: int = 1) -> float:
+    def edge_utilization(self, traffic_rate: float, lanes: int = 1,
+                         traverse_time: float = None) -> float:
         """ρ_edge = λ/(lanes × μ_edge), clamped to [0,1]"""
-        service_rate = lanes / self.system_params.t_traverse  # tasks/ms
+        service_time = traverse_time if traverse_time is not None else self.system_params.t_traverse
+        service_rate = lanes / service_time  # tasks/ms
         return min(traffic_rate / service_rate, 1.0) if service_rate > 0 else 0.0
     
     def node_utilization(self, traffic_rate: float, bays: int = 1) -> float:
@@ -120,8 +127,12 @@ class QueueingModel:
             node_workload: List of (node_id, traffic_rate, work_time, bays)
         """
         total = 0.0
-        for _, traffic_rate, _ in path_edges:
-            total += self.edge_time(traffic_rate, self.system_params.edge_capacity)
+        for _, traffic_rate, traverse_time in path_edges:
+            total += self.edge_time(
+                traffic_rate,
+                self.system_params.edge_capacity,
+                traverse_time=traverse_time,
+            )
         for _, traffic_rate, _, bays in node_workload:
             total += self.node_time(traffic_rate, bays)
         return total
@@ -147,6 +158,24 @@ class AgeOfInformationModel:
             Average AoI: E[A] = Δ/2 + τ
         """
         return update_period / 2 + transmission_delay
+
+    def periodic_violation_probability(self, update_period: float,
+                                       transmission_delay: float) -> float:
+        """Probability that periodic-update AoI exceeds the freshness target.
+
+        With deterministic updates every Δ and fixed transmission delay d, AoI
+        sweeps linearly over [d, d + Δ]. The violation probability is therefore
+        the fraction of that interval above the target freshness.
+        """
+        if update_period <= 0:
+            return 0.0 if transmission_delay <= self.target_freshness else 1.0
+
+        max_age = transmission_delay + update_period
+        if self.target_freshness >= max_age:
+            return 0.0
+        if self.target_freshness <= transmission_delay:
+            return 1.0
+        return (max_age - self.target_freshness) / update_period
     
 
     def violation_probability(self, aoi_mean: float, aoi_std: float = None, 
@@ -202,11 +231,11 @@ class StabilityAnalysis:
         self.queue_model = queue_model
     
     def fleet_capacity(self, fleet_size: int, propagation_delay: float = 0) -> float:
-        """Effective fleet capacity accounting for coordination overhead.
+        """Physical fleet capacity from robot service time.
         
         Args:
             fleet_size: Number of robots in the fleet (N)
-            propagation_delay: Coordination delay in milliseconds
+            propagation_delay: Unused; kept for backward-compatible call sites.
             
         Returns:
             Maximum task throughput capacity in tasks/ms
@@ -217,12 +246,7 @@ class StabilityAnalysis:
         )
         base_capacity = fleet_size / mean_service_time_ms  # tasks/ms
         
-        # Reduce capacity due to coordination delays
-        # C_eff = C_base / (1 + T_prop_ms * C_base)
-        coordination_factor = 1 + (propagation_delay * base_capacity)
-        effective_capacity = base_capacity / coordination_factor
-        
-        return effective_capacity
+        return base_capacity
     
     def max_stable_arrival_rate(self, fleet_size: int, propagation_delay: float = 0,
                                bottleneck_rates: List[float] = None) -> float:
@@ -282,8 +306,9 @@ class StabilityAnalysis:
 class PerformanceModel:
     """Integrates all models for end-to-end performance analysis."""
     
-    def __init__(self, system_params: SystemParams, network_params: NetworkParams, 
-                 queue_params: QueueParams, routing_params: RoutingParams = None):
+    def __init__(self, system_params: SystemParams, network_params: NetworkParams,
+                 queue_params: QueueParams, routing_params: RoutingParams = None,
+                 aoi_target: float = 300.0):
         self.system_params = system_params
         self.network_params = network_params
         self.queue_params = queue_params
@@ -292,7 +317,7 @@ class PerformanceModel:
         self.arrival_model = ArrivalModel(system_params)
         self.queue_model = QueueingModel(queue_params, system_params)
         self.prop_model = PropagationModel(network_params)
-        self.aoi_model = AgeOfInformationModel()
+        self.aoi_model = AgeOfInformationModel(target_freshness=aoi_target)
         self.stability = StabilityAnalysis(self.arrival_model, self.queue_model)
     
     def total_latency(self, fleet_size: int, arrival_rate: float, 
@@ -318,7 +343,7 @@ class PerformanceModel:
             t_claim = self.prop_model.claim_time_dsm()
         path_length = int(self.arrival_model.expected_path_length())
         edge_traffic = arrival_rate / fleet_size
-        traverse_time = 1.0 / self.system_params.robot_speed
+        traverse_time = self.system_params.t_traverse
 
         path_edges = [(i, edge_traffic, traverse_time) for i in range(path_length)]
 
@@ -352,8 +377,8 @@ class PerformanceModel:
         results = {
             "fleet_sizes": fleet_sizes,
             "arrival_rates": arrival_rates,
-            "central": {"propagation": [], "total": [], "stable": []},
-            "dsm": {"propagation": [], "total": [], "stable": []}
+            "central": {"propagation": [], "stable_limit": [], "total": [], "stable": []},
+            "dsm": {"propagation": [], "stable_limit": [], "total": [], "stable": []}
         }
         
         for n in fleet_sizes:

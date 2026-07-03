@@ -1,0 +1,103 @@
+# strong-scaling analytical configuration.
+#
+# It uses realistic movement/work times and a fixed warehouse/demand regime to
+# study how coordination capacity changes as fleet size grows.
+
+system:
+  fleet_sizes: [50, 100, 200, 300, 500, 600, 700, 800]
+  # Model input is tasks/ms; these correspond to 0.2--6.0 tasks/s.
+  arrival_rates: [0.0002, 0.0005, 0.001, 0.002, 0.003, 0.004, 0.005, 0.006]
+
+  warehouse:
+    width: 120
+    height: 100
+    cell_length: 1.0
+    expected_path_cells: 40
+
+  edge_capacity: 2
+  # Aggregate work-station bays. The 120x100 simulator targets 600 pick
+  # locations and 480 pack stations, so pack capacity is the bottleneck.
+  node_capacity: 480
+
+  robot:
+    speed: 0.0005      # 0.5 m/s, expressed as m/ms
+    work_time: 45000.0 # 45 s task handling time
+
+network:
+  hop_delay: 10.0
+  serialization_delay: 2.0
+
+  central:
+    batch_period: 100.0
+    tree_depth: 4
+    solver_complexity:
+      a: 0.0005
+      b: 0.25
+      c: 5.0
+
+    # Centralized path/task service capacity. This models a finite pool of
+    # scheduler workers rather than empirical outcomes from the simulation.
+    scheduler_replicas: 10
+    scheduler_service_base_ms: 1200.0
+    scheduler_service_per_robot_ms: 2.0
+
+  dsm:
+    gossip_fanout: 2
+    tile_hops: 2
+    gossip_period: 200.0
+    backoff_base: 50.0
+    conflict_probability: 0.1
+
+aoi:
+  target_freshness: 300.0
+  update_period: 100.0
+  poisson_rate: 0.005
+
+queueing:
+  max_utilization: 0.85
+  arrival_cv_squared: 1.0
+  service_cv_squared: 0.5
+
+analysis:
+  metrics:
+    - "propagation_time"
+    - "stability_boundary"
+    - "aoi_violations"
+    - "queue_delays"
+  percentiles: [50, 90, 95, 99]
+  sweeps:
+    fleet_size: {min: 50, max: 800, step: 50}
+    # Tasks/ms, equivalent to a 0.2--6.0 tasks/s sweep.
+    arrival_rate: {min: 0.0002, max: 0.006, step: 0.0002}
+    gossip_fanout: [1, 2, 4, 8]
+    batch_period: [50, 100, 200, 300]
+
+plots:
+  figsize: [5, 6]
+  dpi: 600
+  style: "seaborn-v0_8"
+  font_size: 18
+  generate:
+    - "propagation_vs_fleet_size"
+    - "stability_boundaries"
+    - "aoi_violation_probability"
+    - "sensitivity_gossip_fanout"
+  colors:
+    centralized: "#1f77b4"
+    dsm: "#ff7f0e"
+    unstable: "#d62728"
+  output_dir: "results/thesis_strong"
+  formats: ["png", "pdf"]
+
+sensitivity:
+  parameters:
+    hop_delay: [5, 10, 20, 50]
+    solver_complexity_a: [0.0002, 0.0005, 0.001, 0.002]
+    gossip_fanout: [1, 2, 4, 8]
+    conflict_probability: [0.05, 0.1, 0.2, 0.3]
+  method: "one_at_a_time"
+  output_metrics:
+    - "crossover_fleet_size"
+    - "max_stable_rate_dsm"
+    - "max_stable_rate_central"
+    - "latency_improvement_factor"

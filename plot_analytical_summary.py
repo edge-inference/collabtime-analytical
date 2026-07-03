@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Create a three-panel analytical summary figure for the thesis."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+
+from comparison import DSMCentralizedComparison
+
+
+FANOUT_FLEETS = [100, 300, 800]
+FANOUTS = [1, 2, 4, 8]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("config_thesis_strong.yaml"))
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("results/thesis_strong/plots/analytical_summary.pdf"),
+    )
+    args = parser.parse_args()
+
+    matplotlib.rcParams.update({
+        "font.family": "Nimbus Roman",
+        "font.serif": ["Nimbus Roman", "Times", "Times New Roman"],
+        "font.sans-serif": ["Nimbus Roman", "Times", "Times New Roman"],
+        "font.size": 10,
+        "axes.labelsize": 10,
+        "axes.titlesize": 10,
+        "legend.fontsize": 9,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    })
+
+    comp = DSMCentralizedComparison(str(args.config))
+    fleet_sizes = comp.config["system"]["fleet_sizes"]
+    result = comp.comprehensive_comparison()
+    stability = result.stability_comparison
+
+    fig, (ax_cap, ax_aoi, ax_fanout) = plt.subplots(
+        1, 3, figsize=(7.25, 2.6), constrained_layout=True
+    )
+
+    central_tps = [x * 1000.0 for x in stability["central_limits"]]
+    dsm_tps = [x * 1000.0 for x in stability["dsm_limits"]]
+    ax_cap.plot(fleet_sizes, central_tps, "o-", linewidth=1.7, markersize=3.5, label="Centralized")
+    ax_cap.plot(fleet_sizes, dsm_tps, "s-", linewidth=1.7, markersize=3.5, label="CollabTime")
+    central_arr = np.array(central_tps)
+    dsm_arr = np.array(dsm_tps)
+    ax_cap.fill_between(
+        fleet_sizes,
+        central_arr,
+        dsm_arr,
+        where=dsm_arr >= central_arr,
+        interpolate=True,
+        color="#7fbf7b",
+        alpha=0.35,
+    )
+    improvement = dsm_arr[-1] / central_arr[-1]
+    ax_cap.text(
+        0.95,
+        0.08,
+        f"{improvement:.2f}x at N=800",
+        transform=ax_cap.transAxes,
+        fontsize=8,
+        ha="right",
+        va="bottom",
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="0.7", alpha=0.9),
+    )
+    ax_cap.set_xlabel("Fleet size (N)")
+    ax_cap.set_ylabel(r"$\lambda_{\max}$ (tasks/s)")
+    ax_cap.set_title("(a) Stable throughput", loc="left")
+    ax_cap.legend(frameon=False, loc="upper left")
+    ax_cap.grid(False)
+
+    gossip_periods = np.linspace(50, 500, 20)
+    aoi = comp.aoi_violation_analysis(gossip_periods)
+    ax_aoi.plot(
+        gossip_periods,
+        aoi["violation_probabilities"],
+        "o-",
+        linewidth=1.7,
+        markersize=3.5,
+        color="#d62728",
+    )
+    target_rate = 0.05
+    ax_aoi.axhline(y=target_rate, color="#2ca02c", linestyle="--", linewidth=1.3)
+    transmission_delay = comp.network_params.hop_delay * comp.network_params.tile_hops
+    zero_violation_period = max(aoi["target_freshness"] - transmission_delay, 0.0)
+    ax_aoi.axvline(x=zero_violation_period, color="#4c4cff", linestyle="--", linewidth=1.3)
+    ax_aoi.text(62, target_rate + 0.018, "5%", fontsize=8, color="#2ca02c")
+    ax_aoi.text(zero_violation_period + 8, 0.025, "280 ms", fontsize=8, color="#4c4cff")
+    ax_aoi.set_xlabel("Gossip period (ms)")
+    ax_aoi.set_ylabel("AoI violation probability")
+    ax_aoi.set_ylim(bottom=0.0)
+    ax_aoi.set_title("(b) Data freshness", loc="left")
+    ax_aoi.grid(False)
+
+    original_fanout = comp.network_params.gossip_fanout
+    for n in FANOUT_FLEETS:
+        values = []
+        for fanout in FANOUTS:
+            comp.network_params.gossip_fanout = fanout
+            comp.setup_models()
+            values.append(comp.performance_model.prop_model.dsm_propagation_time(n)["total"])
+        ax_fanout.plot(FANOUTS, values, marker="o", linewidth=1.7, markersize=3.5, label=f"N={n}")
+    comp.network_params.gossip_fanout = original_fanout
+    comp.setup_models()
+    ax_fanout.set_xlabel("Gossip fanout (f)")
+    ax_fanout.set_ylabel("State propagation (ms)")
+    ax_fanout.set_xticks(FANOUTS)
+    ax_fanout.set_yscale("log")
+    ax_fanout.set_title("(c) Fanout sensitivity", loc="left")
+    ax_fanout.legend(frameon=False, loc="upper right")
+    ax_fanout.grid(False)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(args.output, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {args.output}")
+
+
+if __name__ == "__main__":
+    main()

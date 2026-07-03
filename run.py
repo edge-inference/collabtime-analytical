@@ -192,7 +192,7 @@ Output:
                 print(f"✓ Significant throughput gains possible: {throughput_adv:.2f}x improvement")
             
             latency_adv = result.performance_advantage.get('avg_latency_improvement', 1.0)
-            if latency_adv > 1.1:
+            if latency_adv is not None and latency_adv > 1.1:
                 print(f"✓ Latency improvements available: {latency_adv:.2f}x average reduction")
         
         print(f"\nResults saved to: {output_dir}")

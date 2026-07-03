@@ -1,5 +1,3 @@
-from scipy.special import gamma
-
 class QueueModel:
     def __init__(self, arrival_rate, service_time, servers=1, Ca2=1.0, Cs2=1.0):
         self.arrival_rate = arrival_rate
@@ -23,9 +21,12 @@ class QueueModel:
         if rho >= 1.0:
             return float('inf')
 
-        sum_terms = sum((a**n) / gamma(n+1) for n in range(self.servers))
-        term_c = (a**self.servers) / gamma(self.servers+1) * (self.servers / (self.servers - a))
-        P_wait = term_c / (sum_terms + term_c)
+        # Compute Erlang B recursively, then convert to Erlang C. This avoids
+        # overflow from directly evaluating a**c / c! for hundreds of bays.
+        erlang_b = 1.0
+        for n in range(1, self.servers + 1):
+            erlang_b = (a * erlang_b) / (n + a * erlang_b)
+        P_wait = erlang_b / (1.0 - rho + rho * erlang_b)
 
         Wq_mm_c = (P_wait * self.service_time) / (self.servers * (1 - rho))
         Wq_gg_c = Wq_mm_c * ((self.Ca2 + self.Cs2) / 2.0)
@@ -48,4 +49,3 @@ def edge_time(self, traverse_time, lanes):
                              Ca2=self.Ca2, Cs2=self.Cs2)
     Wq = temp_model.gg_c_delay() if lanes > 1 else temp_model.gg1_delay()
     return traverse_time + Wq
-

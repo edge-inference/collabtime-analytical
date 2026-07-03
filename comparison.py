@@ -47,6 +47,7 @@ class DSMCentralizedComparison:
         sys_cfg = self.config['system']
         net_cfg = self.config['network']
         queue_cfg = self.config['queueing']
+        self.aoi_target = self.config.get('aoi', {}).get('target_freshness', 300.0)
         
         self.system_params = SystemParams(
             fleet_size=16,
@@ -57,7 +58,8 @@ class DSMCentralizedComparison:
             edge_capacity=sys_cfg['edge_capacity'],
             node_capacity=sys_cfg['node_capacity'],
             t_work=sys_cfg['robot']['work_time'],
-            t_traverse=sys_cfg['warehouse']['cell_length'] / sys_cfg['robot']['speed']
+            t_traverse=sys_cfg['warehouse']['cell_length'] / sys_cfg['robot']['speed'],
+            expected_path_cells=sys_cfg['warehouse'].get('expected_path_cells'),
         )
         
         self.network_params = NetworkParams(
@@ -65,12 +67,18 @@ class DSMCentralizedComparison:
             serialization_delay=net_cfg['serialization_delay'],
             batch_period=net_cfg['central']['batch_period'],
             tree_depth=net_cfg['central']['tree_depth'],
+            solver_a=net_cfg['central']['solver_complexity']['a'],
+            solver_b=net_cfg['central']['solver_complexity']['b'],
+            solver_c=net_cfg['central']['solver_complexity']['c'],
             gossip_fanout=net_cfg['dsm']['gossip_fanout'],
             gossip_period=net_cfg['dsm']['gossip_period'],
             tile_hops=net_cfg['dsm']['tile_hops'],
             claim_rtt=net_cfg['hop_delay'] * 2,
             handshake_rtt=net_cfg['hop_delay'] * net_cfg['dsm']['tile_hops'] * 2,
-            conflict_probability=net_cfg['dsm'].get('conflict_probability', 0.0)
+            conflict_probability=net_cfg['dsm'].get('conflict_probability', 0.0),
+            scheduler_replicas=net_cfg['central'].get('scheduler_replicas', 1),
+            scheduler_service_base_ms=net_cfg['central'].get('scheduler_service_base_ms', 0.0),
+            scheduler_service_per_robot_ms=net_cfg['central'].get('scheduler_service_per_robot_ms', 0.0),
         )
         
         self.queue_params = QueueParams(
@@ -90,7 +98,10 @@ class DSMCentralizedComparison:
     def setup_models(self):
         """Initialize analytical models."""
         self.performance_model = PerformanceModel(
-            self.system_params, self.network_params, self.queue_params
+            self.system_params,
+            self.network_params,
+            self.queue_params,
+            aoi_target=self.aoi_target,
         )
         
     def propagation_time_analysis(self, fleet_sizes: List[int]) -> Dict:
@@ -127,34 +138,46 @@ class DSMCentralizedComparison:
                 central_prop = self.performance_model.prop_model.central_propagation_time(n)["total"]
                 dsm_prop = self.performance_model.prop_model.dsm_propagation_time(n)["total"]
                 
-                central_stable = self.performance_model.stability.max_stable_arrival_rate(n, central_prop)
+                central_coord_limit = self.performance_model.prop_model.central_scheduler_capacity(n)
+                central_stable = self.performance_model.stability.max_stable_arrival_rate(
+                    n,
+                    central_prop,
+                    bottleneck_rates=[central_coord_limit],
+                )
                 dsm_stable = self.performance_model.stability.max_stable_arrival_rate(n, dsm_prop)
                 
                 if rate < min(central_stable, dsm_stable):
-                    stability_mask[i, j] = True
-                    
-                    # Compute latencies
                     central_result = self.performance_model.total_latency(n, rate, "central")
                     dsm_result = self.performance_model.total_latency(n, rate, "dsm")
-                    
-                    central_latency[i, j] = central_result["total"]
-                    dsm_latency[i, j] = dsm_result["total"]
+
+                    if np.isfinite(central_result["total"]) and np.isfinite(dsm_result["total"]):
+                        stability_mask[i, j] = True
+                        central_latency[i, j] = central_result["total"]
+                        dsm_latency[i, j] = dsm_result["total"]
+                    else:
+                        central_latency[i, j] = np.inf
+                        dsm_latency[i, j] = np.inf
                 else:
                     # Mark as unstable
                     central_latency[i, j] = np.inf
                     dsm_latency[i, j] = np.inf
         
+        improvement_factor = np.ones_like(central_latency, dtype=float)
+        valid = (
+            stability_mask
+            & np.isfinite(central_latency)
+            & np.isfinite(dsm_latency)
+            & (dsm_latency > 0.001)
+        )
+        improvement_factor[valid] = central_latency[valid] / dsm_latency[valid]
+
         return {
             "fleet_sizes": fleet_sizes,
             "arrival_rates": arrival_rates,
             "central_latency": central_latency,
             "dsm_latency": dsm_latency,
             "stability_mask": stability_mask,
-            "improvement_factor": np.where(
-                stability_mask & (dsm_latency > 0.001),
-                central_latency / dsm_latency,
-                1.0
-            )
+            "improvement_factor": improvement_factor
         }
     
     def stability_boundary_analysis(self, fleet_sizes: List[int]) -> Dict:
@@ -168,7 +191,12 @@ class DSMCentralizedComparison:
             central_prop = self.performance_model.prop_model.central_propagation_time(n)["total"]
             dsm_prop = self.performance_model.prop_model.dsm_propagation_time(n)["total"]
             
-            central_limit = self.performance_model.stability.max_stable_arrival_rate(n, central_prop)
+            central_coord_limit = self.performance_model.prop_model.central_scheduler_capacity(n)
+            central_limit = self.performance_model.stability.max_stable_arrival_rate(
+                n,
+                central_prop,
+                bottleneck_rates=[central_coord_limit],
+            )
             dsm_limit = self.performance_model.stability.max_stable_arrival_rate(n, dsm_prop)
             
             central_limits.append(central_limit)
@@ -190,8 +218,10 @@ class DSMCentralizedComparison:
         
         for period in gossip_periods:
             transmission_delay = self.network_params.hop_delay * self.network_params.tile_hops
-            avg_aoi = aoi_model.periodic_aoi_with_delay(period, transmission_delay)
-            violation_prob = aoi_model.violation_probability(avg_aoi)
+            violation_prob = aoi_model.periodic_violation_probability(
+                period,
+                transmission_delay,
+            )
             violations.append(violation_prob)
         
         return {
@@ -276,12 +306,21 @@ class DSMCentralizedComparison:
     def _summarize_advantages(self, prop_analysis: Dict, latency_analysis: Dict, 
                             stability_analysis: Dict) -> Dict:
         """Summarize performance advantages."""
+        finite_latency_improvements = latency_analysis["improvement_factor"][
+            latency_analysis["stability_mask"]
+            & np.isfinite(latency_analysis["improvement_factor"])
+        ]
+        avg_latency_improvement = (
+            float(np.mean(finite_latency_improvements))
+            if finite_latency_improvements.size
+            else None
+        )
+
         return {
             "propagation_crossover": prop_analysis["crossover_point"],
             "max_throughput_improvement": max(stability_analysis["throughput_advantage"]),
-            "avg_latency_improvement": np.mean(latency_analysis["improvement_factor"][
-                latency_analysis["stability_mask"]
-            ]),
+            "avg_latency_improvement": avg_latency_improvement,
+            "latency_sample_count": int(finite_latency_improvements.size),
             "stability_advantage_count": sum(
                 1 for adv in stability_analysis["throughput_advantage"] if adv > 1.0
             )
@@ -292,7 +331,7 @@ class DSMCentralizedComparison:
         if param_name == "hop_delay":
             return self.network_params.hop_delay
         elif param_name == "solver_complexity_a":
-            return 0.001  # Default value
+            return self.network_params.solver_a
         elif param_name == "gossip_fanout":
             return self.network_params.gossip_fanout
         elif param_name == "conflict_probability":
@@ -306,19 +345,36 @@ class DSMCentralizedComparison:
             self.network_params.hop_delay = value
             # Recreate models with new parameters
             self.performance_model = PerformanceModel(
-                self.system_params, self.network_params, self.queue_params
+                self.system_params,
+                self.network_params,
+                self.queue_params,
+                aoi_target=self.aoi_target,
+            )
+        elif param_name == "solver_complexity_a":
+            self.network_params.solver_a = value
+            self.performance_model = PerformanceModel(
+                self.system_params,
+                self.network_params,
+                self.queue_params,
+                aoi_target=self.aoi_target,
             )
         elif param_name == "gossip_fanout":
             self.network_params.gossip_fanout = value
             # Recreate models with new parameters
             self.performance_model = PerformanceModel(
-                self.system_params, self.network_params, self.queue_params
+                self.system_params,
+                self.network_params,
+                self.queue_params,
+                aoi_target=self.aoi_target,
             )
         elif param_name == "conflict_probability":
             self.network_params.conflict_probability = value
             # Recreate models with new parameters
             self.performance_model = PerformanceModel(
-                self.system_params, self.network_params, self.queue_params
+                self.system_params,
+                self.network_params,
+                self.queue_params,
+                aoi_target=self.aoi_target,
             )
     
     def generate_summary_report(self, result: ComparisonResult) -> str:
@@ -332,7 +388,15 @@ class DSMCentralizedComparison:
         report.append("Performance Advantages:")
         report.append(f"  Propagation crossover: {result.performance_advantage['propagation_crossover']} robots")
         report.append(f"  Max throughput improvement: {result.performance_advantage['max_throughput_improvement']:.2f}x")
-        report.append(f"  Average latency improvement: {result.performance_advantage['avg_latency_improvement']:.2f}x")
+        latency_improvement = result.performance_advantage['avg_latency_improvement']
+        latency_samples = result.performance_advantage['latency_sample_count']
+        if latency_improvement is None:
+            report.append("  Average latency improvement: N/A (no jointly stable points)")
+        else:
+            report.append(
+                f"  Average latency improvement: {latency_improvement:.3f}x "
+                f"({latency_samples} jointly stable points)"
+            )
         report.append(f"  Fleet sizes where DSM wins: {result.performance_advantage['stability_advantage_count']}\n")
         
         # Recommendations
