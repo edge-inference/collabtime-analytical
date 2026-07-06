@@ -20,7 +20,7 @@ from models import (
 class ComparisonResult:
     """Results of DSM vs centralized comparison."""
     fleet_sizes: List[int]
-    crossover_point: int
+    crossover_point: int  # propagation-delay crossover (legacy field)
     central_metrics: Dict
     dsm_metrics: Dict
     performance_advantage: Dict
@@ -315,9 +315,21 @@ class DSMCentralizedComparison:
             if finite_latency_improvements.size
             else None
         )
+        capacity_crossover = next(
+            (
+                fleet_size
+                for fleet_size, advantage in zip(
+                    stability_analysis["fleet_sizes"],
+                    stability_analysis["throughput_advantage"],
+                )
+                if advantage > 1.0 + 1e-12
+            ),
+            None,
+        )
 
         return {
             "propagation_crossover": prop_analysis["crossover_point"],
+            "capacity_crossover": capacity_crossover,
             "max_throughput_improvement": max(stability_analysis["throughput_advantage"]),
             "avg_latency_improvement": avg_latency_improvement,
             "latency_sample_count": int(finite_latency_improvements.size),
@@ -382,11 +394,19 @@ class DSMCentralizedComparison:
         report = []
         report.append("=== DSM vs Centralized Performance Analysis ===\n")
         
-        report.append(f"Crossover Point: {result.crossover_point} robots")
-        report.append(f"(DSM becomes better than centralized at this fleet size)\n")
+        propagation_crossover = result.performance_advantage['propagation_crossover']
+        capacity_crossover = result.performance_advantage['capacity_crossover']
+        report.append(f"Propagation-delay crossover: {propagation_crossover} robots")
+        if capacity_crossover is None:
+            report.append("Capacity crossover: none in the analyzed fleet range\n")
+        else:
+            report.append(
+                f"Capacity crossover under base scheduler assumptions: "
+                f"{capacity_crossover} robots\n"
+            )
         
         report.append("Performance Advantages:")
-        report.append(f"  Propagation crossover: {result.performance_advantage['propagation_crossover']} robots")
+        report.append(f"  Propagation crossover: {propagation_crossover} robots")
         report.append(f"  Max throughput improvement: {result.performance_advantage['max_throughput_improvement']:.2f}x")
         latency_improvement = result.performance_advantage['avg_latency_improvement']
         latency_samples = result.performance_advantage['latency_sample_count']
@@ -399,17 +419,18 @@ class DSMCentralizedComparison:
             )
         report.append(f"  Fleet sizes where DSM wins: {result.performance_advantage['stability_advantage_count']}\n")
         
-        # Recommendations
-        report.append("Recommendations:")
-        if result.crossover_point <= max(result.fleet_sizes) // 2:
-            report.append("  ✓ DSM recommended for medium to large fleets")
-            report.append(f"  ✓ Switch to DSM at {result.crossover_point}+ robots")
+        report.append("Interpretation:")
+        if capacity_crossover is not None:
+            report.append(
+                f"  Base capacity assumptions favor DSM from "
+                f"{capacity_crossover} robots"
+            )
+            report.append("  Treat this crossover as conditional on scheduler demand")
         else:
-            report.append("  ⚠ Centralized may be better for current fleet sizes")
-            report.append("  ⚠ Consider optimizing DSM parameters")
+            report.append("  No capacity advantage appears in the analyzed range")
         
         if result.performance_advantage['max_throughput_improvement'] > 1.2:
-            report.append("  ✓ Significant throughput gains possible with DSM")
+            report.append("  Significant conditional throughput gains are possible")
         
         return "\n".join(report)
 

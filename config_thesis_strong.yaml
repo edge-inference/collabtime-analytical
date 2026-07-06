@@ -1,7 +1,8 @@
-# strong-scaling analytical configuration.
+# Thesis analytical configuration shared by the capacity and fixed-load studies.
 #
-# It uses realistic movement/work times and a fixed warehouse/demand regime to
-# study how coordination capacity changes as fleet size grows.
+# It fixes warehouse geometry and service assumptions while fleet size varies.
+# Capacity studies solve for maximum sustainable demand; the strict
+# strong-scaling runner instead holds total offered demand fixed.
 
 system:
   fleet_sizes: [50, 100, 200, 300, 500, 600, 700, 800]
@@ -35,8 +36,9 @@ network:
       b: 0.25
       c: 5.0
 
-    # Centralized path/task service capacity. This models a finite pool of
-    # scheduler workers rather than empirical outcomes from the simulation.
+    # Aggregate scheduler worker-time per completed order. This absorbs repeated
+    # assignment polling and path requests; it is an illustrative stress
+    # assumption rather than a direct per-request timing measurement.
     scheduler_replicas: 10
     scheduler_service_base_ms: 1200.0
     scheduler_service_per_robot_ms: 2.0

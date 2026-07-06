@@ -173,23 +173,26 @@ Output:
         # Final recommendations
         print("\n=== Key Findings ===")
         
-        crossover = result.crossover_point if 'result' in locals() else None
+        crossover = (
+            result.performance_advantage.get('capacity_crossover')
+            if 'result' in locals()
+            else None
+        )
         max_fleet = max(comparison.config['system']['fleet_sizes'])
         
         if crossover and crossover <= max_fleet // 2:
-            print("✓ DSM RECOMMENDED for medium to large fleets")
-            print(f"✓ Switch to DSM at {crossover}+ robots for better performance")
+            print("Base scheduler assumptions favor DSM for medium to large fleets")
+            print(f"Conditional capacity crossover: {crossover} robots")
         elif crossover:
-            print("⚠ CENTRALIZED may be better for current fleet sizes")
-            print(f"⚠ DSM only becomes advantageous at {crossover}+ robots")
+            print(f"Conditional capacity crossover: {crossover} robots")
+            print("Review scheduler sensitivity before drawing a deployment boundary")
         else:
-            print("⚠ No clear crossover found in analyzed range")
-            print("⚠ Consider adjusting DSM parameters or extending analysis")
+            print("No capacity crossover found in the analyzed range")
         
         if 'result' in locals():
             throughput_adv = result.performance_advantage.get('max_throughput_improvement', 1.0)
             if throughput_adv > 1.2:
-                print(f"✓ Significant throughput gains possible: {throughput_adv:.2f}x improvement")
+                print(f"Conditional throughput gain: {throughput_adv:.2f}x")
             
             latency_adv = result.performance_advantage.get('avg_latency_improvement', 1.0)
             if latency_adv is not None and latency_adv > 1.1:
@@ -202,7 +205,7 @@ Output:
         if crossover and crossover <= max_fleet:
             print("1. Proceed with Mesa+LF simulation for validation")
             print("2. Test DSM with halo gossip parameters from analysis")
-            print("3. Validate crossover point with realistic scenarios")
+            print("3. Calibrate scheduler operation cost and validate the crossover")
         else:
             print("1. Optimize DSM parameters (gossip fanout, tile size)")
             print("2. Consider hybrid centralized-DSM approach")

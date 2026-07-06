@@ -30,17 +30,22 @@ python run.py -v
 python run.py -c my_config.yaml -o my_results/
 ```
 
-### Thesis strong-scaling study
+### Thesis analytical studies
 
-`config_thesis_strong.yaml` uses the warehouse simulator's physical timing and
-station-count assumptions for the 120x100 layout. Arrival rates are expressed
-internally in tasks/ms; the configured sweep corresponds to 0.2--6.0 tasks/s.
+`config_thesis_strong.yaml` contains the shared warehouse geometry and nominal
+service assumptions for the 120x100 layout. Arrival rates are expressed
+internally in tasks/ms; the configured grid corresponds to 0.2--6.0 tasks/s.
+
+The first four commands generate capacity-boundary and sensitivity analyses.
+The final command is the separate strict strong-scaling study at a fixed total
+arrival rate.
 
 ```bash
 venv/bin/python run.py -c config_thesis_strong.yaml -o results/thesis_strong
 venv/bin/python plot_analytical_summary.py
 venv/bin/python plot_data_plane_sensitivity.py
 venv/bin/python sweep_scheduler_sensitivity.py
+venv/bin/python run_strong_scaling_fixed.py --arrival-rate 5.0
 ```
 
 Generated reports and figures are written under `results/thesis_strong/`, which

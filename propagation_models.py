@@ -26,8 +26,8 @@ class NetworkParams:
     handshake_rtt: float  # milliseconds - RTT for propagation handshake
     conflict_probability: float  # probability a claim attempt conflicts (0..1)
     scheduler_replicas: int = 1  # centralized scheduler service replicas
-    scheduler_service_base_ms: float = 0.0  # base per-request scheduler service time
-    scheduler_service_per_robot_ms: float = 0.0  # additional per-robot service cost
+    scheduler_service_base_ms: float = 0.0  # base worker-time demand per order
+    scheduler_service_per_robot_ms: float = 0.0  # per-robot demand growth per order
 
 
 class PropagationModel:
@@ -68,7 +68,7 @@ class PropagationModel:
         return 0.0
 
     def central_scheduler_service_time(self, fleet_size: int) -> float:
-        """Per-request service time of the centralized scheduler in milliseconds."""
+        """Aggregate scheduler worker-time demand per order in milliseconds."""
         return (
             self.params.scheduler_service_base_ms
             + self.params.scheduler_service_per_robot_ms * fleet_size
