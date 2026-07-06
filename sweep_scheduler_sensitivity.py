@@ -161,7 +161,7 @@ def plot_analysis(
     ax_threshold.set_yscale("log")
     ax_threshold.set_xlabel("Fleet size (N)")
     ax_threshold.set_ylabel("Scheduler demand threshold (s/order)")
-    ax_threshold.set_title("(a) Exact capacity boundary", loc="left")
+    ax_threshold.set_title("(a) Scheduler-capacity boundary", loc="left")
     ax_threshold.legend(frameon=False, fontsize=8, ncol=2)
 
     selected_workers = int(comparison.network_params.scheduler_replicas)
@@ -197,7 +197,9 @@ def plot_analysis(
     )
     ax_heatmap.set_xlabel(r"Growth $\alpha$ (ms/robot/order)")
     ax_heatmap.set_ylabel(r"Base demand $S_0$ (s/order)")
-    ax_heatmap.set_title(f"(b) First crossover, R={selected_workers}", loc="left")
+    ax_heatmap.set_title(
+        f"(b) First sampled crossover, R={selected_workers}", loc="left"
+    )
 
     for row_index in range(len(BASE_DEMANDS_MS)):
         for column_index in range(len(PER_ROBOT_DEMAND_MS)):
@@ -262,7 +264,7 @@ def main() -> None:
     )
 
     print(f"Sensitivity: {sensitivity_path}")
-    print(f"Exact thresholds: {threshold_path}")
+    print(f"Capacity thresholds: {threshold_path}")
     print(f"Figure: {pdf_path}")
 
 

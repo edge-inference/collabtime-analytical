@@ -20,7 +20,7 @@ from models import (
 class ComparisonResult:
     """Results of DSM vs centralized comparison."""
     fleet_sizes: List[int]
-    crossover_point: int  # propagation-delay crossover (legacy field)
+    crossover_point: int  # first sampled propagation-delay advantage
     central_metrics: Dict
     dsm_metrics: Dict
     performance_advantage: Dict
@@ -74,7 +74,8 @@ class DSMCentralizedComparison:
             gossip_period=net_cfg['dsm']['gossip_period'],
             tile_hops=net_cfg['dsm']['tile_hops'],
             claim_rtt=net_cfg['hop_delay'] * 2,
-            handshake_rtt=net_cfg['hop_delay'] * net_cfg['dsm']['tile_hops'] * 2,
+            central_handshake_rtt=net_cfg['central'].get('handshake_rtt', 0.0),
+            dsm_handshake_rtt=net_cfg['dsm'].get('handshake_rtt', 0.0),
             conflict_probability=net_cfg['dsm'].get('conflict_probability', 0.0),
             scheduler_replicas=net_cfg['central'].get('scheduler_replicas', 1),
             scheduler_service_base_ms=net_cfg['central'].get('scheduler_service_base_ms', 0.0),
@@ -396,7 +397,10 @@ class DSMCentralizedComparison:
         
         propagation_crossover = result.performance_advantage['propagation_crossover']
         capacity_crossover = result.performance_advantage['capacity_crossover']
-        report.append(f"Propagation-delay crossover: {propagation_crossover} robots")
+        report.append(
+            f"First sampled propagation-delay advantage: "
+            f"{propagation_crossover} robots"
+        )
         if capacity_crossover is None:
             report.append("Capacity crossover: none in the analyzed fleet range\n")
         else:
@@ -406,7 +410,9 @@ class DSMCentralizedComparison:
             )
         
         report.append("Performance Advantages:")
-        report.append(f"  Propagation crossover: {propagation_crossover} robots")
+        report.append(
+            f"  First sampled propagation advantage: {propagation_crossover} robots"
+        )
         report.append(f"  Max throughput improvement: {result.performance_advantage['max_throughput_improvement']:.2f}x")
         latency_improvement = result.performance_advantage['avg_latency_improvement']
         latency_samples = result.performance_advantage['latency_sample_count']

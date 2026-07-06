@@ -35,6 +35,7 @@ network:
   # Central system
   central:
     batch_period: 200.0  # milliseconds
+    handshake_rtt: 0.0   # no propagation-level request/ack in the base model
     tree_depth: 4  # broadcast tree depth
     solver_complexity:  # T_solve(N) = a*N^2 + b*N + c
       a: 0.001  # quadratic coefficient (ms)
@@ -46,6 +47,7 @@ network:
     gossip_fanout: 2  # number of neighbors per gossip round
     tile_hops: 2  # average hops between tile owners
     gossip_period: 150.0  # milliseconds
+    handshake_rtt: 0.0    # gossip is one-way; claim RTT is modeled separately
     backoff_base: 50.0  # milliseconds base backoff
     conflict_probability: 0.1  # base conflict probability
 

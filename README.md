@@ -36,7 +36,7 @@ python run.py -c my_config.yaml -o my_results/
 service assumptions for the 120x100 layout. Arrival rates are expressed
 internally in tasks/ms; the configured grid corresponds to 0.2--6.0 tasks/s.
 
-The first four commands generate capacity-boundary and sensitivity analyses.
+The first five commands generate capacity-boundary and sensitivity analyses.
 The final command is the separate strict strong-scaling study at a fixed total
 arrival rate.
 
@@ -45,6 +45,7 @@ venv/bin/python run.py -c config_thesis_strong.yaml -o results/thesis_strong
 venv/bin/python plot_analytical_summary.py
 venv/bin/python plot_data_plane_sensitivity.py
 venv/bin/python sweep_scheduler_sensitivity.py
+venv/bin/python sweep_propagation_sensitivity.py
 venv/bin/python run_strong_scaling_fixed.py --arrival-rate 5.0
 ```
 
@@ -57,20 +58,24 @@ is intentionally ignored by Git.
 
 **Centralized:**
 ```
-T_prop_cent = Δ_B + T_solve(N) + D_tree × δ_hop
+T_prop_cent = Δ_B/2 + T_solve(N) + D_tree × (δ_hop + δ_ser) + T_ack,cent
 ```
-- Δ_B: Batch period (200ms default)
+- Δ_B/2: Expected wait for uniformly phased arrivals within a batch period
 - T_solve(N): Solver complexity (a×N² + b×N + c)
 - D_tree: Broadcast tree depth
 - δ_hop: Network hop delay (10ms default)
+- δ_ser: Per-hop serialization assumption
+- T_ack,cent: Optional propagation acknowledgment RTT (zero by default)
 
 **DSM:**
 ```
-T_prop_dsm = (dist_hops + log_f(N)) × δ_hop
+T_prop_dsm = T_g/2 + (dist_hops + ceil(log_f(N))) × (δ_hop + δ_ser) + T_ack,dsm
 ```
+- T_g/2: Expected wait for a uniformly phased update within a gossip period
 - dist_hops: Distance between tile owners (2 hops default)
 - f: Gossip fanout (2 default)
 - N: Fleet size
+- T_ack,dsm: Optional propagation acknowledgment RTT (zero by default)
 
 ### Total Latency
 
@@ -163,19 +168,17 @@ analysis:
 ```
 === DSM vs Centralized Performance Analysis ===
 
-Crossover Point: 12 robots
-(DSM becomes better than centralized at this fleet size)
+First sampled propagation-delay advantage: 4 robots
+Capacity crossover: none in the analyzed fleet range
 
 Performance Advantages:
-  Propagation crossover: 12 robots
-  Max throughput improvement: 1.64x
-  Average latency improvement: 1.23x
-  Fleet sizes where DSM wins: 6
+  First sampled propagation advantage: 4 robots
+  Max throughput improvement: 1.00x
+  Average latency improvement: 1.001x (11 jointly stable points)
+  Fleet sizes where DSM wins: 0
 
-Recommendations:
-  ✓ DSM recommended for medium to large fleets
-  ✓ Switch to DSM at 12+ robots
-  ✓ Significant throughput gains possible with DSM
+Interpretation:
+  No capacity advantage appears in the analyzed range
 ```
 
 ### Visualizations
@@ -207,7 +210,8 @@ Recommendations:
 ## Parameter Sensitivity
 
 The analysis includes sensitivity studies for:
-- Network hop delay (5-50ms)
+- Combined per-hop communication delay (1-50ms)
+- Central batch and DSM gossip periods
 - Solver complexity coefficients
 - Gossip fanout (1, 2, 4, 8)
 - Conflict probability (0.05-0.3)
@@ -225,8 +229,9 @@ Critical parameters for DSM advantage:
 - Queueing uses G/G/1 and G/G/c approximations with variance parameters (`arrival_cv_squared`, `service_cv_squared`).
 - Stability follows a utilization cap `ρ_max` applied to effective capacity; max stable λ is computed per fleet size including coordination overhead.
 - Communication:
-  - Centralized: batch period + solver time + tree-depth × hop delay.
-  - DSM: tile hops + gossip rounds ≈ log_fanout(N) × hop delay.
+  - Centralized and DSM periodic waits use half the configured period for mean-delay analysis.
+  - Hop and serialization delay enter additively per logical hop.
+  - Propagation acknowledgment RTTs are architecture-specific and zero unless an explicit request/ack exchange is modeled.
 - AoI uses an exponential approximation for violation probability relative to a freshness target.
 
 These assumptions are consistent with common AMR/AGV analytical practices (grid abstractions, queueing approximations, gossip scaling, and AoI tractable forms).

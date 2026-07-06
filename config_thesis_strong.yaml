@@ -30,6 +30,8 @@ network:
 
   central:
     batch_period: 100.0
+    # The base propagation model has no central request/ack exchange.
+    handshake_rtt: 0.0
     tree_depth: 4
     solver_complexity:
       a: 0.0005
@@ -47,6 +49,8 @@ network:
     gossip_fanout: 2
     tile_hops: 2
     gossip_period: 200.0
+    # Gossip propagation is one-way; task-claim RTT is modeled separately.
+    handshake_rtt: 0.0
     backoff_base: 50.0
     conflict_probability: 0.1
 

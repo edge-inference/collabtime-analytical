@@ -23,7 +23,8 @@ class NetworkParams:
     gossip_period: float  # milliseconds
     tile_hops: float  # average hops between tiles
     claim_rtt: float  # milliseconds - RTT for task claim confirmation
-    handshake_rtt: float  # milliseconds - RTT for propagation handshake
+    central_handshake_rtt: float  # milliseconds - optional central propagation ACK
+    dsm_handshake_rtt: float  # milliseconds - optional DSM propagation ACK
     conflict_probability: float  # probability a claim attempt conflicts (0..1)
     scheduler_replicas: int = 1  # centralized scheduler service replicas
     scheduler_service_base_ms: float = 0.0  # base worker-time demand per order
@@ -91,9 +92,10 @@ class PropagationModel:
         solver_time = self._solver_time(fleet_size)
         broadcast_time = self.params.tree_depth * self.params.hop_delay
         serialization_time = self.params.tree_depth * self.params.serialization_delay
-        handshake_time = self.params.handshake_rtt
+        batch_wait = 0.5 * self.params.batch_period
+        handshake_time = self.params.central_handshake_rtt
         total_time = (
-            self.params.batch_period
+            batch_wait
             + solver_time
             + broadcast_time
             + serialization_time
@@ -101,7 +103,7 @@ class PropagationModel:
         )
         
         return {
-            "batch": self.params.batch_period,
+            "batch": batch_wait,
             "solver": solver_time,
             "broadcast": broadcast_time,
             "serialization": serialization_time,
@@ -119,7 +121,8 @@ class PropagationModel:
 
         tile_hop_time = self.params.tile_hops * self.params.hop_delay
         tile_serialization_time = self.params.tile_hops * self.params.serialization_delay
-        tile_time = tile_hop_time + self.params.handshake_rtt
+        tile_time = tile_hop_time
+        handshake_time = self.params.dsm_handshake_rtt
         
         # Edge case: single robot needs no gossip
         if fleet_size <= 1:
@@ -128,7 +131,13 @@ class PropagationModel:
                 "tile": tile_time,
                 "gossip": 0.0,
                 "serialization": tile_serialization_time,
-                "total": pre_delay + tile_time + tile_serialization_time
+                "handshake": handshake_time,
+                "total": (
+                    pre_delay
+                    + tile_time
+                    + tile_serialization_time
+                    + handshake_time
+                ),
             }
         
         # Gossip rounds needed to reach all nodes
@@ -141,12 +150,19 @@ class PropagationModel:
         gossip_serialization_time = gossip_rounds * self.params.serialization_delay
         serialization_time = tile_serialization_time + gossip_serialization_time
         gossip_time = gossip_hop_time
-        total_time = pre_delay + tile_time + gossip_time + serialization_time
+        total_time = (
+            pre_delay
+            + tile_time
+            + gossip_time
+            + serialization_time
+            + handshake_time
+        )
         
         return {
             "pre": pre_delay,
             "tile": tile_time,
             "gossip": gossip_time,
             "serialization": serialization_time,
+            "handshake": handshake_time,
             "total": total_time
         }
