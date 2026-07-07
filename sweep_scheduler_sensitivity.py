@@ -185,7 +185,7 @@ def plot_analysis(
         [f"{value / 1000.0:g}" for value in BASE_DEMANDS_MS]
     )
     ax_heatmap.set_xlabel(r"Growth $\alpha$ (ms/robot/order)")
-    ax_heatmap.set_ylabel(r"Fixed demand $D_0$ (s/order)")
+    ax_heatmap.set_ylabel(r"Base demand $D_0$ (s/order)")
     ax_heatmap.set_title(
         f"(b) Scheduler-bottleneck threshold, R={selected_workers}", loc="left"
     )
