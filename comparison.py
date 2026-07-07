@@ -78,8 +78,14 @@ class DSMCentralizedComparison:
             dsm_handshake_rtt=net_cfg['dsm'].get('handshake_rtt', 0.0),
             conflict_probability=net_cfg['dsm'].get('conflict_probability', 0.0),
             scheduler_replicas=net_cfg['central'].get('scheduler_replicas', 1),
-            scheduler_service_base_ms=net_cfg['central'].get('scheduler_service_base_ms', 0.0),
-            scheduler_service_per_robot_ms=net_cfg['central'].get('scheduler_service_per_robot_ms', 0.0),
+            scheduler_demand_base_ms=net_cfg['central'].get(
+                'scheduler_demand_base_ms',
+                net_cfg['central'].get('scheduler_service_base_ms', 0.0),
+            ),
+            scheduler_demand_per_robot_ms=net_cfg['central'].get(
+                'scheduler_demand_per_robot_ms',
+                net_cfg['central'].get('scheduler_service_per_robot_ms', 0.0),
+            ),
         )
         
         self.queue_params = QueueParams(
@@ -316,7 +322,7 @@ class DSMCentralizedComparison:
             if finite_latency_improvements.size
             else None
         )
-        capacity_crossover = next(
+        scheduler_bottleneck_threshold = next(
             (
                 fleet_size
                 for fleet_size, advantage in zip(
@@ -330,7 +336,7 @@ class DSMCentralizedComparison:
 
         return {
             "propagation_crossover": prop_analysis["crossover_point"],
-            "capacity_crossover": capacity_crossover,
+            "scheduler_bottleneck_threshold": scheduler_bottleneck_threshold,
             "max_throughput_improvement": max(stability_analysis["throughput_advantage"]),
             "avg_latency_improvement": avg_latency_improvement,
             "latency_sample_count": int(finite_latency_improvements.size),
@@ -396,17 +402,22 @@ class DSMCentralizedComparison:
         report.append("=== DSM vs Centralized Performance Analysis ===\n")
         
         propagation_crossover = result.performance_advantage['propagation_crossover']
-        capacity_crossover = result.performance_advantage['capacity_crossover']
+        scheduler_bottleneck_threshold = result.performance_advantage[
+            'scheduler_bottleneck_threshold'
+        ]
         report.append(
             f"First sampled propagation-delay advantage: "
             f"{propagation_crossover} robots"
         )
-        if capacity_crossover is None:
-            report.append("Capacity crossover: none in the analyzed fleet range\n")
+        if scheduler_bottleneck_threshold is None:
+            report.append(
+                "Scheduler-bottleneck threshold: not reached in the analyzed "
+                "fleet range\n"
+            )
         else:
             report.append(
-                f"Capacity crossover under base scheduler assumptions: "
-                f"{capacity_crossover} robots\n"
+                f"First sampled scheduler-bottleneck threshold under configured "
+                f"scheduler demand: {scheduler_bottleneck_threshold} robots\n"
             )
         
         report.append("Performance Advantages:")
@@ -423,17 +434,24 @@ class DSMCentralizedComparison:
                 f"  Average latency improvement: {latency_improvement:.3f}x "
                 f"({latency_samples} jointly stable points)"
             )
-        report.append(f"  Fleet sizes where DSM wins: {result.performance_advantage['stability_advantage_count']}\n")
+        report.append(
+            "  Fleet sizes with scheduler-limited centralized capacity: "
+            f"{result.performance_advantage['stability_advantage_count']}\n"
+        )
         
         report.append("Interpretation:")
-        if capacity_crossover is not None:
+        if scheduler_bottleneck_threshold is not None:
             report.append(
-                f"  Base capacity assumptions favor DSM from "
-                f"{capacity_crossover} robots"
+                f"  The scheduler is capacity-limiting from sampled N="
+                f"{scheduler_bottleneck_threshold}"
             )
-            report.append("  Treat this crossover as conditional on scheduler demand")
+            report.append(
+                "  Treat this threshold as conditional on scheduler demand"
+            )
         else:
-            report.append("  No capacity advantage appears in the analyzed range")
+            report.append(
+                "  The scheduler is not capacity-limiting in the analyzed range"
+            )
         
         if result.performance_advantage['max_throughput_improvement'] > 1.2:
             report.append("  Significant conditional throughput gains are possible")

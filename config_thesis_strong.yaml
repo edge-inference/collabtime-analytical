@@ -38,12 +38,9 @@ network:
       b: 0.25
       c: 5.0
 
-    # Aggregate scheduler worker-time per completed order. This absorbs repeated
-    # assignment polling and path requests; it is an illustrative stress
-    # assumption rather than a direct per-request timing measurement.
+    # Matches the centralized scheduler pool used by the warehouse study.
+    # Scheduler demand is varied parametrically rather than fixed here.
     scheduler_replicas: 10
-    scheduler_service_base_ms: 1200.0
-    scheduler_service_per_robot_ms: 2.0
 
   dsm:
     gossip_fanout: 2

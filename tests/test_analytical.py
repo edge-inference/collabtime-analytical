@@ -37,7 +37,7 @@ def test_thesis_strong_config_has_jointly_stable_latency_points():
     assert result.performance_advantage["latency_sample_count"] > 0
     assert math.isfinite(result.performance_advantage["avg_latency_improvement"])
     assert result.performance_advantage["propagation_crossover"] == 500
-    assert result.performance_advantage["capacity_crossover"] == 600
+    assert result.performance_advantage["scheduler_bottleneck_threshold"] is None
 
 
 def test_propagation_uses_expected_period_waits_and_separate_rtts():
@@ -96,10 +96,10 @@ def test_scheduler_parameter_sensitivity_exposes_assumption_dependence():
         for row in threshold_rows
     }
 
-    assert results[(10, 1200.0, 0.0)]["crossover_n"] == ""
-    assert results[(10, 1200.0, 0.5)]["crossover_n"] == 800
-    assert results[(10, 1200.0, 2.0)]["crossover_n"] == 600
+    assert results[(10, 1200.0, 0.0)]["scheduler_bottleneck_threshold_n"] == ""
+    assert results[(10, 1200.0, 0.5)]["scheduler_bottleneck_threshold_n"] == 800
+    assert results[(10, 1200.0, 2.0)]["scheduler_bottleneck_threshold_n"] == 600
     assert math.isclose(
-        thresholds[(10, 800)]["crossover_demand_threshold_ms_per_order"],
+        thresholds[(10, 800)]["scheduler_demand_threshold_ms_per_order"],
         1562.5,
     )

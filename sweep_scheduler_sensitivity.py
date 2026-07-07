@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run a purely parametric scheduler-capacity sensitivity analysis.
 
-The centralized scheduler demand is S_sched(N) = S0 + alpha*N milliseconds of
+The centralized scheduler demand is D_sched(N) = D0 + alpha*N milliseconds of
 aggregate worker time per completed order. No simulation output is consumed.
 """
 
@@ -15,7 +15,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import numpy as np
 
 from comparison import DSMCentralizedComparison
@@ -26,7 +25,7 @@ BASE_DEMANDS_MS = [0.0, 300.0, 600.0, 1200.0, 2400.0]
 PER_ROBOT_DEMAND_MS = [0.0, 0.5, 1.0, 2.0, 4.0]
 
 
-def first_capacity_crossover(
+def first_scheduler_bottleneck_threshold(
     fleet_sizes: list[int], central: list[float], physical: list[float]
 ) -> int | None:
     for fleet_size, central_limit, physical_limit in zip(
@@ -55,7 +54,7 @@ def run_sweep(
                 {
                     "fleet_size": fleet_size,
                     "scheduler_workers": replicas,
-                    "crossover_demand_threshold_ms_per_order": threshold_ms,
+                    "scheduler_demand_threshold_ms_per_order": threshold_ms,
                 }
             )
 
@@ -71,7 +70,7 @@ def run_sweep(
                     )
                     central_limits.append(min(physical_limit, scheduler_limit))
 
-                crossover = first_capacity_crossover(
+                bottleneck_threshold = first_scheduler_bottleneck_threshold(
                     fleet_sizes, central_limits, physical_limits
                 )
                 central_at_800 = central_limits[-1] * 1000.0
@@ -84,7 +83,11 @@ def run_sweep(
                         "demand_at_800_ms_per_order": (
                             base_ms + per_robot_ms * fleet_sizes[-1]
                         ),
-                        "crossover_n": crossover if crossover is not None else "",
+                        "scheduler_bottleneck_threshold_n": (
+                            bottleneck_threshold
+                            if bottleneck_threshold is not None
+                            else ""
+                        ),
                         "central_at_800_tps": central_at_800,
                         "physical_limit_at_800_tps": physical_limit_at_800,
                         "physical_to_central_capacity_ratio_at_800": (
@@ -131,7 +134,7 @@ def plot_analysis(
 
     for replicas in REPLICAS:
         values = [
-            float(row["crossover_demand_threshold_ms_per_order"]) / 1000.0
+            float(row["scheduler_demand_threshold_ms_per_order"]) / 1000.0
             for row in threshold_rows
             if int(row["scheduler_workers"]) == replicas
         ]
@@ -144,24 +147,10 @@ def plot_analysis(
             label=f"R={replicas}",
         )
 
-    base_ms = comparison.network_params.scheduler_service_base_ms
-    per_robot_ms = comparison.network_params.scheduler_service_per_robot_ms
-    base_demand = [
-        (base_ms + per_robot_ms * fleet_size) / 1000.0
-        for fleet_size in fleet_sizes
-    ]
-    ax_threshold.plot(
-        fleet_sizes,
-        base_demand,
-        color="black",
-        linestyle="--",
-        linewidth=1.8,
-        label="Base demand",
-    )
     ax_threshold.set_yscale("log")
     ax_threshold.set_xlabel("Fleet size (N)")
     ax_threshold.set_ylabel("Scheduler demand threshold (s/order)")
-    ax_threshold.set_title("(a) Scheduler-capacity boundary", loc="left")
+    ax_threshold.set_title("(a) Scheduler-demand boundary", loc="left")
     ax_threshold.legend(frameon=False, fontsize=8, ncol=2)
 
     selected_workers = int(comparison.network_params.scheduler_replicas)
@@ -173,9 +162,9 @@ def plot_analysis(
         column_index = PER_ROBOT_DEMAND_MS.index(
             float(row["per_robot_demand_ms_per_order"])
         )
-        crossover = row["crossover_n"]
-        if crossover != "":
-            grid[row_index, column_index] = float(crossover)
+        bottleneck_threshold = row["scheduler_bottleneck_threshold_n"]
+        if bottleneck_threshold != "":
+            grid[row_index, column_index] = float(bottleneck_threshold)
 
     color_map = plt.get_cmap("viridis_r").copy()
     color_map.set_bad("#d9d9d9")
@@ -196,16 +185,20 @@ def plot_analysis(
         [f"{value / 1000.0:g}" for value in BASE_DEMANDS_MS]
     )
     ax_heatmap.set_xlabel(r"Growth $\alpha$ (ms/robot/order)")
-    ax_heatmap.set_ylabel(r"Base demand $S_0$ (s/order)")
+    ax_heatmap.set_ylabel(r"Fixed demand $D_0$ (s/order)")
     ax_heatmap.set_title(
-        f"(b) First sampled crossover, R={selected_workers}", loc="left"
+        f"(b) Scheduler-bottleneck threshold, R={selected_workers}", loc="left"
     )
 
     for row_index in range(len(BASE_DEMANDS_MS)):
         for column_index in range(len(PER_ROBOT_DEMAND_MS)):
-            crossover = grid[row_index, column_index]
-            label = "none" if np.isnan(crossover) else f"N={int(crossover)}"
-            color = "#333333" if np.isnan(crossover) else "white"
+            bottleneck_threshold = grid[row_index, column_index]
+            label = (
+                "none"
+                if np.isnan(bottleneck_threshold)
+                else f"N={int(bottleneck_threshold)}"
+            )
+            color = "#333333" if np.isnan(bottleneck_threshold) else "white"
             ax_heatmap.text(
                 column_index,
                 row_index,
@@ -216,20 +209,8 @@ def plot_analysis(
                 fontsize=7.5,
             )
 
-    base_row = BASE_DEMANDS_MS.index(base_ms)
-    base_column = PER_ROBOT_DEMAND_MS.index(per_robot_ms)
-    ax_heatmap.add_patch(
-        Rectangle(
-            (base_column - 0.5, base_row - 0.5),
-            1,
-            1,
-            fill=False,
-            edgecolor="#d62728",
-            linewidth=2.0,
-        )
-    )
     color_bar = fig.colorbar(image, ax=ax_heatmap, fraction=0.05, pad=0.03)
-    color_bar.set_label("Crossover fleet size N")
+    color_bar.set_label(r"First sampled threshold $N_{\mathrm{SB}}$")
 
     pdf_path = output_dir / "scheduler_capacity_sensitivity.pdf"
     png_path = output_dir / "scheduler_capacity_sensitivity.png"

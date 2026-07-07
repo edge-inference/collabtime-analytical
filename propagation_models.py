@@ -27,8 +27,8 @@ class NetworkParams:
     dsm_handshake_rtt: float  # milliseconds - optional DSM propagation ACK
     conflict_probability: float  # probability a claim attempt conflicts (0..1)
     scheduler_replicas: int = 1  # centralized scheduler service replicas
-    scheduler_service_base_ms: float = 0.0  # base worker-time demand per order
-    scheduler_service_per_robot_ms: float = 0.0  # per-robot demand growth per order
+    scheduler_demand_base_ms: float = 0.0  # fixed worker-time demand per order
+    scheduler_demand_per_robot_ms: float = 0.0  # per-robot demand growth per order
 
 
 class PropagationModel:
@@ -68,20 +68,20 @@ class PropagationModel:
         """Claim time for centralized (negligible vs solver time)."""
         return 0.0
 
-    def central_scheduler_service_time(self, fleet_size: int) -> float:
+    def central_scheduler_demand(self, fleet_size: int) -> float:
         """Aggregate scheduler worker-time demand per order in milliseconds."""
         return (
-            self.params.scheduler_service_base_ms
-            + self.params.scheduler_service_per_robot_ms * fleet_size
+            self.params.scheduler_demand_base_ms
+            + self.params.scheduler_demand_per_robot_ms * fleet_size
         )
 
     def central_scheduler_capacity(self, fleet_size: int) -> float:
         """Maximum centralized scheduler throughput in tasks/ms."""
-        service_time = self.central_scheduler_service_time(fleet_size)
-        if service_time <= 0:
+        demand = self.central_scheduler_demand(fleet_size)
+        if demand <= 0:
             return float("inf")
         replicas = max(self.params.scheduler_replicas, 1)
-        return replicas / service_time
+        return replicas / demand
 
     def central_propagation_time(self, fleet_size: int) -> Dict[str, float]:
         """Propagation time breakdown for centralized system.

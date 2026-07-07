@@ -169,16 +169,16 @@ analysis:
 === DSM vs Centralized Performance Analysis ===
 
 First sampled propagation-delay advantage: 4 robots
-Capacity crossover: none in the analyzed fleet range
+Scheduler-bottleneck threshold: not reached in the analyzed fleet range
 
 Performance Advantages:
   First sampled propagation advantage: 4 robots
   Max throughput improvement: 1.00x
   Average latency improvement: 1.001x (11 jointly stable points)
-  Fleet sizes where DSM wins: 0
+  Fleet sizes with scheduler-limited centralized capacity: 0
 
 Interpretation:
-  No capacity advantage appears in the analyzed range
+  The scheduler is not capacity-limiting in the analyzed range
 ```
 
 ### Visualizations

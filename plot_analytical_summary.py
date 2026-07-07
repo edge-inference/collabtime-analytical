@@ -45,43 +45,39 @@ def main() -> None:
 
     comp = DSMCentralizedComparison(str(args.config))
     fleet_sizes = comp.config["system"]["fleet_sizes"]
-    result = comp.comprehensive_comparison()
-    stability = result.stability_comparison
-
     fig, (ax_cap, ax_aoi, ax_fanout) = plt.subplots(
         1, 3, figsize=(7.25, 2.6), constrained_layout=True
     )
 
-    central_tps = [x * 1000.0 for x in stability["central_limits"]]
-    dsm_tps = [x * 1000.0 for x in stability["dsm_limits"]]
-    ax_cap.plot(fleet_sizes, central_tps, "o-", linewidth=1.7, markersize=3.5, label="Centralized")
-    ax_cap.plot(fleet_sizes, dsm_tps, "s-", linewidth=1.7, markersize=3.5, label="CollabTime")
-    central_arr = np.array(central_tps)
-    dsm_arr = np.array(dsm_tps)
-    ax_cap.fill_between(
-        fleet_sizes,
-        central_arr,
-        dsm_arr,
-        where=dsm_arr >= central_arr,
-        interpolate=True,
-        color="#7fbf7b",
-        alpha=0.35,
+    robot_service_ms = (
+        comp.system_params.expected_path_cells * comp.system_params.t_traverse
+        + comp.system_params.t_work
     )
-    improvement = dsm_arr[-1] / central_arr[-1]
+    scheduler_workers = comp.network_params.scheduler_replicas
+    scheduler_boundaries = [
+        scheduler_workers * robot_service_ms / fleet_size / 1000.0
+        for fleet_size in fleet_sizes
+    ]
+    ax_cap.plot(
+        fleet_sizes,
+        scheduler_boundaries,
+        "o-",
+        linewidth=1.7,
+        markersize=3.5,
+        color="#1f77b4",
+    )
     ax_cap.text(
         0.95,
-        0.08,
-        f"{improvement:.2f}x at N=800",
+        0.88,
+        f"$R_{{\\mathrm{{sched}}}}={scheduler_workers}$",
         transform=ax_cap.transAxes,
         fontsize=8,
         ha="right",
-        va="bottom",
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="0.7", alpha=0.9),
+        va="top",
     )
     ax_cap.set_xlabel("Fleet size (N)")
-    ax_cap.set_ylabel(r"$\lambda_{\max}$ (tasks/s)")
-    ax_cap.set_title("(a) Stable throughput", loc="left")
-    ax_cap.legend(frameon=False, loc="upper left")
+    ax_cap.set_ylabel(r"$D_{\mathrm{sched}}^*$ (s/order)")
+    ax_cap.set_title("(a) Scheduler-demand boundary", loc="left")
     ax_cap.grid(False)
 
     gossip_periods = np.linspace(50, 500, 20)

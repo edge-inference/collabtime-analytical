@@ -173,21 +173,27 @@ Output:
         # Final recommendations
         print("\n=== Key Findings ===")
         
-        crossover = (
-            result.performance_advantage.get('capacity_crossover')
+        bottleneck_threshold = (
+            result.performance_advantage.get('scheduler_bottleneck_threshold')
             if 'result' in locals()
             else None
         )
         max_fleet = max(comparison.config['system']['fleet_sizes'])
         
-        if crossover and crossover <= max_fleet // 2:
-            print("Base scheduler assumptions favor DSM for medium to large fleets")
-            print(f"Conditional capacity crossover: {crossover} robots")
-        elif crossover:
-            print(f"Conditional capacity crossover: {crossover} robots")
+        if bottleneck_threshold and bottleneck_threshold <= max_fleet // 2:
+            print("The scheduler becomes capacity-limiting at medium fleet sizes")
+            print(
+                "First sampled scheduler-bottleneck threshold: "
+                f"{bottleneck_threshold} robots"
+            )
+        elif bottleneck_threshold:
+            print(
+                "First sampled scheduler-bottleneck threshold: "
+                f"{bottleneck_threshold} robots"
+            )
             print("Review scheduler sensitivity before drawing a deployment boundary")
         else:
-            print("No capacity crossover found in the analyzed range")
+            print("The scheduler is not capacity-limiting in the analyzed range")
         
         if 'result' in locals():
             throughput_adv = result.performance_advantage.get('max_throughput_improvement', 1.0)
@@ -202,10 +208,10 @@ Output:
         
         # Next steps recommendation
         print("\n=== Next Steps ===")
-        if crossover and crossover <= max_fleet:
+        if bottleneck_threshold and bottleneck_threshold <= max_fleet:
             print("1. Proceed with Mesa+LF simulation for validation")
             print("2. Test DSM with halo gossip parameters from analysis")
-            print("3. Calibrate scheduler operation cost and validate the crossover")
+            print("3. Calibrate scheduler operation cost and validate the threshold")
         else:
             print("1. Optimize DSM parameters (gossip fanout, tile size)")
             print("2. Consider hybrid centralized-DSM approach")
