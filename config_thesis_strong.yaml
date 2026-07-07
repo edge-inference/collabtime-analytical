@@ -38,9 +38,11 @@ network:
       b: 0.25
       c: 5.0
 
-    # Matches the centralized scheduler pool used by the warehouse study.
-    # Scheduler demand is varied parametrically rather than fixed here.
+    # Configured scheduler scenario used by Figure 3.3(a). Appendix A.2 varies
+    # these demand components instead of treating this point as calibrated.
     scheduler_replicas: 10
+    scheduler_demand_base_ms: 1200.0
+    scheduler_demand_per_robot_ms: 2.0
 
   dsm:
     gossip_fanout: 2

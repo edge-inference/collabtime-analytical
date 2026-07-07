@@ -37,7 +37,7 @@ def test_thesis_strong_config_has_jointly_stable_latency_points():
     assert result.performance_advantage["latency_sample_count"] > 0
     assert math.isfinite(result.performance_advantage["avg_latency_improvement"])
     assert result.performance_advantage["propagation_crossover"] == 500
-    assert result.performance_advantage["scheduler_bottleneck_threshold"] is None
+    assert result.performance_advantage["scheduler_bottleneck_threshold"] == 600
 
 
 def test_propagation_uses_expected_period_waits_and_separate_rtts():
