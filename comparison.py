@@ -7,7 +7,7 @@ Compares distributed shared memory against centralized coordination.
 import numpy as np
 import yaml
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import logging
 from dataclasses import dataclass
 
@@ -20,7 +20,7 @@ from models import (
 class ComparisonResult:
     """Results of DSM vs centralized comparison."""
     fleet_sizes: List[int]
-    crossover_point: int  # first sampled propagation-delay advantage
+    crossover_point: Optional[int]  # first sampled propagation-delay advantage
     central_metrics: Dict
     dsm_metrics: Dict
     performance_advantage: Dict
@@ -77,6 +77,7 @@ class DSMCentralizedComparison:
             central_handshake_rtt=net_cfg['central'].get('handshake_rtt', 0.0),
             dsm_handshake_rtt=net_cfg['dsm'].get('handshake_rtt', 0.0),
             conflict_probability=net_cfg['dsm'].get('conflict_probability', 0.0),
+            backoff_window_ms=net_cfg['dsm'].get('backoff_base', 100.0),
             scheduler_replicas=net_cfg['central'].get('scheduler_replicas', 1),
             scheduler_demand_base_ms=net_cfg['central'].get(
                 'scheduler_demand_base_ms',
@@ -303,12 +304,12 @@ class DSMCentralizedComparison:
         )
     
     def _find_crossover(self, fleet_sizes: List[int], central_values: List[float], 
-                       dsm_values: List[float]) -> int:
+                       dsm_values: List[float]) -> Optional[int]:
         """Find crossover point where DSM becomes better."""
         for i, n in enumerate(fleet_sizes):
             if dsm_values[i] < central_values[i]:
                 return n
-        return fleet_sizes[-1]  # If no crossover found
+        return None
     
     def _summarize_advantages(self, prop_analysis: Dict, latency_analysis: Dict, 
                             stability_analysis: Dict) -> Dict:
@@ -405,10 +406,15 @@ class DSMCentralizedComparison:
         scheduler_bottleneck_threshold = result.performance_advantage[
             'scheduler_bottleneck_threshold'
         ]
-        report.append(
-            f"First sampled propagation-delay advantage: "
-            f"{propagation_crossover} robots"
-        )
+        if propagation_crossover is None:
+            report.append(
+                "First sampled propagation-delay advantage: not reached"
+            )
+        else:
+            report.append(
+                f"First sampled propagation-delay advantage: "
+                f"{propagation_crossover} robots"
+            )
         if scheduler_bottleneck_threshold is None:
             report.append(
                 "Scheduler-bottleneck threshold: not reached in the analyzed "
@@ -421,9 +427,13 @@ class DSMCentralizedComparison:
             )
         
         report.append("Performance Advantages:")
-        report.append(
-            f"  First sampled propagation advantage: {propagation_crossover} robots"
-        )
+        if propagation_crossover is None:
+            report.append("  First sampled propagation advantage: not reached")
+        else:
+            report.append(
+                f"  First sampled propagation advantage: "
+                f"{propagation_crossover} robots"
+            )
         report.append(f"  Max throughput improvement: {result.performance_advantage['max_throughput_improvement']:.2f}x")
         latency_improvement = result.performance_advantage['avg_latency_improvement']
         latency_samples = result.performance_advantage['latency_sample_count']

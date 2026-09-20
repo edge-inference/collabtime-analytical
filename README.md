@@ -1,6 +1,8 @@
 # Analytical Performance Model
 
-Quick analytical pass to determine if DSM will outperform centralized coordination before building full Mesa/LF simulation.
+Analytical decomposition of centralized and DSM coordination costs, physical
+capacity, queueing, and data freshness. Numerical conclusions are conditional
+on the configured architecture and parameter scenario.
 
 ## Overview
 
@@ -49,8 +51,55 @@ venv/bin/python sweep_propagation_sensitivity.py
 venv/bin/python run_strong_scaling_fixed.py --arrival-rate 5.0
 ```
 
-Generated reports and figures are written under `results/thesis_strong/`, which
-is intentionally ignored by Git.
+### Scheduler service-demand pilot and full protocol
+
+The scheduler-capacity sensitivity uses conditional service-demand parameters.
+The current event-driven script is a component microbenchmark, not a complete
+per-task calibration. Read `SCHEDULER_CAPACITY_STUDY.md` for the required
+operation-count, resource-demand, queueing, and validation protocol before
+using scheduler-capacity results in a thesis figure. To reproduce the pilot,
+build the warehouse Cython A* extension and run:
+
+```bash
+cd /home/modfi/ivalab/extern/warehouse
+/home/modfi/ivalab/venv/bin/python perf/setup_cython.py build_ext --inplace
+
+cd /home/modfi/models/research/analytical
+/home/modfi/ivalab/venv/bin/python scheduler_demand_study.py
+```
+
+The pilot reports isolated elapsed operation costs in `ms/operation`, an assumed
+one-assignment/one-path aggregate in `ms/task`, and saturated throughput in
+`tasks/s`. It keeps network latency separate, compares candidate scaling laws,
+bootstraps the linear parameters, and checks capacity with threads and
+independent worker processes. Outputs are written to
+`results/scheduler_demand_study/`; they are not thesis-ready calibration data.
+
+The complete scheduler-capacity workflow is split into reproducible stages:
+
+```bash
+# Implementation operation rates and visit ratios
+/home/modfi/ivalab/venv/bin/python warehouse_scheduler_trace.py
+
+# Component CPU/elapsed cost versus algorithmic work factors
+/home/modfi/ivalab/venv/bin/python scheduler_component_factorial.py --cpu-affinity 5
+
+# Trace decomposition and comparison with the configured analytical scenario
+venv/bin/python analyze_scheduler_trace.py
+
+# Open-loop queue and worker-scaling validation
+/home/modfi/ivalab/venv/bin/python scheduler_open_loop_validation.py
+```
+
+These stages intentionally distinguish the implemented polling baseline, the
+event-driven full-reservation counterfactual, and any batched global planner.
+CPU time calibrates CPU service demand on the disclosed host; elapsed service
+time, queue wait, and end-to-end response remain separate quantities. A CPU
+coefficient is not treated as portable across machines or planner algorithms.
+
+Analytical figure outputs are written under `results/thesis_strong/`; scheduler
+calibration and validation outputs are under
+`results/scheduler_capacity_study/`. Both are intentionally ignored by Git.
 
 ## Key Models
 
@@ -138,21 +187,18 @@ analysis:
   percentiles: [50, 90, 95, 99]
 ```
 
-## Expected Results
+## Interpretation Rules
 
-**Look for:**
-
-1. **Crossover Point**: Fleet size where DSM becomes better
-   - Typical range: 8-16 robots for warehouse applications
-   - Depends on solver complexity and network characteristics
-
-2. **Throughput Advantage**: DSM enables higher stable arrival rates
-   - Expected: 1.2-2x improvement at scale
-   - Due to parallel processing vs centralized bottleneck
-
-3. **AoI Compliance**: Information freshness maintained
-   - Target: <5% violations of 300ms freshness requirement
-   - Achievable with 150ms gossip periods
+- A propagation threshold is the first sampled fleet size at which one
+  configured delay expression is lower than the other. It is not an empirical
+  warehouse crossover.
+- A scheduler-capacity threshold is conditional on scheduler service demand,
+  operation rates, and effective worker capacity. Uncalibrated values are
+  sensitivity scenarios, not measured boundaries.
+- The 300 ms AoI target is an illustrative freshness budget for fast-changing
+  local state. It is not a universal warehouse networking requirement.
+- Analytical results motivate simulation or implementation experiments; they
+  do not predetermine which architecture must win.
 
 ## Files
 
@@ -190,22 +236,10 @@ Interpretation:
 
 ## Interpretation
 
-**If Analysis Shows:**
-
-✅ **DSM Wins** (crossover < N_max/2, throughput > 1.2x)
-- Proceed with Mesa+LF implementation
-- Use DSM parameters from analysis
-- Focus on halo gossip optimization
-
-⚠️ **Centralized Better** (late crossover, low advantages)  
-- Optimize DSM parameters first
-- Consider hybrid approaches
-- Re-analyze before proceeding
-
-🔄 **Unclear Results** (no crossover, similar performance)
-- Extend analysis range
-- Adjust network/solver parameters
-- Consider application-specific factors
+Treat any architectural advantage as conditional until it survives parameter
+sensitivity and an independent implementation or simulation evaluation. If no
+threshold occurs in the evaluated domain, report that directly instead of
+substituting the last sampled fleet size.
 
 ## Parameter Sensitivity
 
@@ -232,9 +266,11 @@ Critical parameters for DSM advantage:
   - Centralized and DSM periodic waits use half the configured period for mean-delay analysis.
   - Hop and serialization delay enter additively per logical hop.
   - Propagation acknowledgment RTTs are architecture-specific and zero unless an explicit request/ack exchange is modeled.
-- AoI uses an exponential approximation for violation probability relative to a freshness target.
+- Periodic-update AoI uses the exact fixed-period, fixed-delay sawtooth model.
+  The separate Poisson helper states its exponential-age assumption explicitly.
 
-These assumptions are consistent with common AMR/AGV analytical practices (grid abstractions, queueing approximations, gossip scaling, and AoI tractable forms).
+These are tractable modeling assumptions whose sensitivity and implementation
+mapping must be reported with each result.
 
 ## Integration with Warehouse DSM
 
@@ -243,4 +279,6 @@ Results feed into:
 - Lingua Franca timing constraints (warehouse/lf/dsm_coordinator.lf)
 - DSM configuration (warehouse/dsm/api.py parameters)
 
-Use analytical crossover point to set experimental fleet sizes and validate DSM effectiveness before full-scale testing.
+Use conditional analytical thresholds to choose informative experimental fleet
+sizes on both sides of the modeled boundary, then test whether the predicted
+mechanism appears in the warehouse implementation.

@@ -26,9 +26,10 @@ class NetworkParams:
     central_handshake_rtt: float  # milliseconds - optional central propagation ACK
     dsm_handshake_rtt: float  # milliseconds - optional DSM propagation ACK
     conflict_probability: float  # probability a claim attempt conflicts (0..1)
+    backoff_window_ms: float  # uniform task-claim backoff window
     scheduler_replicas: int = 1  # centralized scheduler service replicas
-    scheduler_demand_base_ms: float = 0.0  # fixed worker-time demand per order
-    scheduler_demand_per_robot_ms: float = 0.0  # per-robot demand growth per order
+    scheduler_demand_base_ms: float = 0.0  # fixed worker-time demand per task
+    scheduler_demand_per_robot_ms: float = 0.0  # per-robot demand growth per task
 
 
 class PropagationModel:
@@ -45,7 +46,9 @@ class PropagationModel:
             + self.params.solver_c
         )
     
-    def claim_time_dsm(self, num_contenders: int = 2, window_size: float = 100.0) -> float:
+    def claim_time_dsm(
+        self, num_contenders: int = 2, window_size: float | None = None
+    ) -> float:
         """Expected claim time with continuous random backoff and conflict retries.
         
         Args:
@@ -56,7 +59,8 @@ class PropagationModel:
             Expected claim time in milliseconds
         """
         # Continuous random backoff per-attempt time: E[T_attempt] = W/(k+1) + RTT
-        expected_min_time = window_size / (num_contenders + 1)
+        window = self.params.backoff_window_ms if window_size is None else window_size
+        expected_min_time = window / (num_contenders + 1)
         per_attempt = expected_min_time + self.params.claim_rtt
 
         # Expected attempts under geometric retries with conflict probability p
@@ -69,7 +73,7 @@ class PropagationModel:
         return 0.0
 
     def central_scheduler_demand(self, fleet_size: int) -> float:
-        """Aggregate scheduler worker-time demand per order in milliseconds."""
+        """Aggregate scheduler worker-time demand per task in milliseconds."""
         return (
             self.params.scheduler_demand_base_ms
             + self.params.scheduler_demand_per_robot_ms * fleet_size

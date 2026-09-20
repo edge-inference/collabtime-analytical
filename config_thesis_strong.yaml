@@ -39,7 +39,7 @@ network:
       c: 5.0
 
     # Configured scheduler scenario used by Figure 3.3(a). Appendix A.2 varies
-    # these demand components instead of treating this point as calibrated.
+    # these per-task demand components instead of treating this point as calibrated.
     scheduler_replicas: 10
     scheduler_demand_base_ms: 1200.0
     scheduler_demand_per_robot_ms: 2.0

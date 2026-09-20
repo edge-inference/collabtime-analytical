@@ -2,7 +2,7 @@
 """Run a purely parametric scheduler-capacity sensitivity analysis.
 
 The centralized scheduler demand is D_sched(N) = D0 + alpha*N milliseconds of
-aggregate worker time per completed order. No simulation output is consumed.
+aggregate worker time per completed task. No simulation output is consumed.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def run_sweep(
                 {
                     "fleet_size": fleet_size,
                     "scheduler_workers": replicas,
-                    "scheduler_demand_threshold_ms_per_order": threshold_ms,
+                    "scheduler_demand_threshold_ms_per_task": threshold_ms,
                 }
             )
 
@@ -78,9 +78,9 @@ def run_sweep(
                 sensitivity_rows.append(
                     {
                         "scheduler_workers": replicas,
-                        "base_demand_ms_per_order": base_ms,
-                        "per_robot_demand_ms_per_order": per_robot_ms,
-                        "demand_at_800_ms_per_order": (
+                        "base_demand_ms_per_task": base_ms,
+                        "demand_growth_ms_per_robot_task": per_robot_ms,
+                        "demand_at_800_ms_per_task": (
                             base_ms + per_robot_ms * fleet_sizes[-1]
                         ),
                         "scheduler_bottleneck_threshold_n": (
@@ -134,7 +134,7 @@ def plot_analysis(
 
     for replicas in REPLICAS:
         values = [
-            float(row["scheduler_demand_threshold_ms_per_order"]) / 1000.0
+            float(row["scheduler_demand_threshold_ms_per_task"]) / 1000.0
             for row in threshold_rows
             if int(row["scheduler_workers"]) == replicas
         ]
@@ -149,8 +149,8 @@ def plot_analysis(
 
     ax_threshold.set_yscale("log")
     ax_threshold.set_xlabel("Fleet size (N)")
-    ax_threshold.set_ylabel("Scheduler demand threshold (s/order)")
-    ax_threshold.set_title("(a) Scheduler-demand boundary", loc="left")
+    ax_threshold.set_ylabel("Scheduler demand threshold (s/task)")
+    ax_threshold.set_title("(a) Scheduler demand boundary", loc="left")
     ax_threshold.legend(frameon=False, fontsize=8, ncol=2)
 
     selected_workers = int(comparison.network_params.scheduler_replicas)
@@ -158,9 +158,9 @@ def plot_analysis(
     for row in sensitivity_rows:
         if int(row["scheduler_workers"]) != selected_workers:
             continue
-        row_index = BASE_DEMANDS_MS.index(float(row["base_demand_ms_per_order"]))
+        row_index = BASE_DEMANDS_MS.index(float(row["base_demand_ms_per_task"]))
         column_index = PER_ROBOT_DEMAND_MS.index(
-            float(row["per_robot_demand_ms_per_order"])
+            float(row["demand_growth_ms_per_robot_task"])
         )
         bottleneck_threshold = row["scheduler_bottleneck_threshold_n"]
         if bottleneck_threshold != "":
@@ -184,10 +184,10 @@ def plot_analysis(
     ax_heatmap.set_yticklabels(
         [f"{value / 1000.0:g}" for value in BASE_DEMANDS_MS]
     )
-    ax_heatmap.set_xlabel(r"Growth $\alpha$ (ms/robot/order)")
-    ax_heatmap.set_ylabel(r"Base demand $D_0$ (s/order)")
+    ax_heatmap.set_xlabel(r"Growth $\alpha$ (ms/robot/task)")
+    ax_heatmap.set_ylabel(r"Base demand $D_0$ (s/task)")
     ax_heatmap.set_title(
-        f"(b) Scheduler-bottleneck threshold, R={selected_workers}", loc="left"
+        f"(b) Scheduler bottleneck threshold, R={selected_workers}", loc="left"
     )
 
     for row_index in range(len(BASE_DEMANDS_MS)):

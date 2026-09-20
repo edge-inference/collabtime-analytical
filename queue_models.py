@@ -37,15 +37,3 @@ class QueueModel:
             return self.gg1_delay()
         else:
             return self.gg_c_delay()
-
-def node_time(self):
-    """Total time at node = service_time + wait_time"""
-    Wq = self.gg1_delay() if self.servers == 1 else self.gg_c_delay()
-    return self.service_time + Wq
-
-def edge_time(self, traverse_time, lanes):
-    """Total time on edge = traverse_time + wait_time"""
-    temp_model = QueueModel(self.arrival_rate, traverse_time, servers=lanes, 
-                             Ca2=self.Ca2, Cs2=self.Cs2)
-    Wq = temp_model.gg_c_delay() if lanes > 1 else temp_model.gg1_delay()
-    return traverse_time + Wq

@@ -37,17 +37,43 @@ class QueueParams:
 
 @dataclass
 class RoutingParams:
+    """Expected visits to each work-station class per completed task."""
+
     pickup_fraction: float = 1.0
-    delivery_fraction: float = 1.0
+    delivery_fraction: float = 0.0
     sortation_fraction: float = 0.0
     charging_fraction: float = 0.0
+
+    def total_work_visits(self) -> float:
+        visits = (
+            self.pickup_fraction
+            + self.delivery_fraction
+            + self.sortation_fraction
+            + self.charging_fraction
+        )
+        if visits < 0:
+            raise ValueError("routing visit ratios must be nonnegative")
+        return visits
+
+    def work_time_multiplier(self) -> float:
+        """Expected work time as a multiple of the base node service time."""
+        self.total_work_visits()  # validates the visit ratios
+        return (
+            self.pickup_fraction
+            + self.delivery_fraction
+            + 0.8 * self.sortation_fraction
+            + 2.0 * self.charging_fraction
+        )
 
 
 class ArrivalModel:
     """Models task arrivals and service requirements."""
     
-    def __init__(self, params: SystemParams):
+    def __init__(self, params: SystemParams, work_time_multiplier: float = 1.0):
         self.params = params
+        if work_time_multiplier < 0:
+            raise ValueError("work_time_multiplier must be nonnegative")
+        self.work_time_multiplier = work_time_multiplier
         
     def poisson_arrivals(self, lambda_rate: float, duration: float) -> np.ndarray:
         """Generate Poisson arrival times."""
@@ -58,7 +84,11 @@ class ArrivalModel:
         """Total service time for a task in milliseconds.
         Assumes path_length is measured in cells; converts via per-cell traverse time."""
         travel_time_ms = path_length * self.params.t_traverse
-        return travel_time_ms + self.params.t_work + queue_delay
+        return (
+            travel_time_ms
+            + self.work_time_multiplier * self.params.t_work
+            + queue_delay
+        )
     
     def expected_path_length(self) -> float:
         """Expected shortest path length in cells (dimensionless).
@@ -95,17 +125,22 @@ class QueueingModel:
         wait_time_ms = edge_queue.waiting_time()  # ms
         return service_time + wait_time_ms
     
-    def node_time(self, traffic_rate: float, bays: int = 1) -> float:
+    def node_time(
+        self, traffic_rate: float, bays: int = 1, service_time: float = None
+    ) -> float:
         """Total node time = t_work + wait_time (in milliseconds)."""
+        node_service_time = (
+            self.system_params.t_work if service_time is None else service_time
+        )
         node_queue = QueueModel(
             arrival_rate=traffic_rate,  # tasks/ms
-            service_time=self.system_params.t_work,  # ms
+            service_time=node_service_time,  # ms
             servers=bays,
             Ca2=self.params.arrival_cv_squared,
             Cs2=self.params.service_cv_squared
         )
         wait_time_ms = node_queue.waiting_time()  # ms
-        return self.system_params.t_work + wait_time_ms
+        return node_service_time + wait_time_ms
     
     def edge_utilization(self, traffic_rate: float, lanes: int = 1,
                          traverse_time: float = None) -> float:
@@ -119,12 +154,15 @@ class QueueingModel:
         service_rate = bays / self.system_params.t_work  # tasks/ms
         return min(traffic_rate / service_rate, 1.0) if service_rate > 0 else 0.0
     
-    def total_completion_time(self, path_edges: List[tuple], node_workload: List[tuple]) -> float:
+    def total_completion_time(
+        self, path_edges: List[tuple], node_workload: List[tuple]
+    ) -> float:
         """T_completion = Σ(edge_time) + Σ(node_time) - full task completion time (ms)
         
         Args:
             path_edges: List of (edge_id, traffic_rate, traverse_time)
-            node_workload: List of (node_id, traffic_rate, work_time, bays)
+            node_workload: List of
+                (node_id, visits_per_task, traffic_rate, work_time, bays)
         """
         total = 0.0
         for _, traffic_rate, traverse_time in path_edges:
@@ -133,8 +171,10 @@ class QueueingModel:
                 self.system_params.edge_capacity,
                 traverse_time=traverse_time,
             )
-        for _, traffic_rate, _, bays in node_workload:
-            total += self.node_time(traffic_rate, bays)
+        for _, visits_per_task, traffic_rate, work_time, bays in node_workload:
+            total += visits_per_task * self.node_time(
+                traffic_rate, bays, service_time=work_time
+            )
         return total
 
 
@@ -198,29 +238,23 @@ class AgeOfInformationModel:
     
     def required_update_rate(self, target_violation_prob: float = 0.05, 
                              service_time: float = 0) -> float:
-        """Required update rate to achieve target violation probability.
+        """Poisson update rate required for a target AoI violation probability.
         
         Args:
             target_violation_prob: Target probability P(A > τ) to achieve
-            service_time: Mean service/transmission time in ms
+            service_time: Fixed transmission delay in ms
             
         Returns:
             Required update rate λ in updates/ms
         """
-        # For exponential AoI: P(A > τ) = exp(-τ/mean)
-        # Solve for mean: mean = -τ/ln(P)
-        required_mean = -self.target_freshness / np.log(target_violation_prob)
-        
-        if service_time <= 0:
-            # No service time, just update interval
-            # Mean AoI = 2/λ for Poisson process
-            # So λ = 2/mean (in updates/ms)
-            return 2 / required_mean
-        else:
-            # Mean AoI = 1/λ + service_time
-            # So λ = 1/(mean - service_time)
-            adjusted_mean = max(required_mean - service_time, 0.001)
-            return 1 / adjusted_mean
+        if not 0 < target_violation_prob < 1:
+            raise ValueError("target_violation_prob must be in (0, 1)")
+        freshness_after_delay = self.target_freshness - service_time
+        if freshness_after_delay <= 0:
+            return float("inf")
+        # For Poisson generation and fixed delay d:
+        # P(A > tau) = exp[-lambda (tau - d)], tau > d.
+        return -np.log(target_violation_prob) / freshness_after_delay
 
 
 class StabilityAnalysis:
@@ -314,7 +348,10 @@ class PerformanceModel:
         self.queue_params = queue_params
         self.routing_params = routing_params or RoutingParams()
         
-        self.arrival_model = ArrivalModel(system_params)
+        self.arrival_model = ArrivalModel(
+            system_params,
+            work_time_multiplier=self.routing_params.work_time_multiplier(),
+        )
         self.queue_model = QueueingModel(queue_params, system_params)
         self.prop_model = PropagationModel(network_params)
         self.aoi_model = AgeOfInformationModel(target_freshness=aoi_target)
@@ -352,15 +389,48 @@ class PerformanceModel:
         sortation_node_traffic = arrival_rate * self.routing_params.sortation_fraction
         charging_node_traffic = arrival_rate * self.routing_params.charging_fraction
 
-        node_workload = [
-            (0, pickup_node_traffic, self.system_params.t_work, self.system_params.node_capacity),
-            (1, delivery_node_traffic, self.system_params.t_work, self.system_params.node_capacity),
-        ]
+        node_workload = []
+        if self.routing_params.pickup_fraction > 0:
+            node_workload.append(
+                (
+                    0,
+                    self.routing_params.pickup_fraction,
+                    pickup_node_traffic,
+                    self.system_params.t_work,
+                    self.system_params.node_capacity,
+                )
+            )
+        if self.routing_params.delivery_fraction > 0:
+            node_workload.append(
+                (
+                    1,
+                    self.routing_params.delivery_fraction,
+                    delivery_node_traffic,
+                    self.system_params.t_work,
+                    self.system_params.node_capacity,
+                )
+            )
         
         if self.routing_params.sortation_fraction > 0:
-            node_workload.append((2, sortation_node_traffic, self.system_params.t_work * 0.8, self.system_params.node_capacity))
+            node_workload.append(
+                (
+                    2,
+                    self.routing_params.sortation_fraction,
+                    sortation_node_traffic,
+                    self.system_params.t_work * 0.8,
+                    self.system_params.node_capacity,
+                )
+            )
         if self.routing_params.charging_fraction > 0:
-            node_workload.append((3, charging_node_traffic, self.system_params.t_work * 2.0, self.system_params.node_capacity))
+            node_workload.append(
+                (
+                    3,
+                    self.routing_params.charging_fraction,
+                    charging_node_traffic,
+                    self.system_params.t_work * 2.0,
+                    self.system_params.node_capacity,
+                )
+            )
 
         task_time_ms = self.queue_model.total_completion_time(path_edges, node_workload)        
         total_latency_ms = t_prop + t_claim + task_time_ms
